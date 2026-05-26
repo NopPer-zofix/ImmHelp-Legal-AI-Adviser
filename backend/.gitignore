@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+
+# ChromaDB persistent storage
+chroma_db/
+
+#vscode
+.vscode/
