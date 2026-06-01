@@ -1,6 +1,5 @@
 import streamlit as st
 
-# 1. Page Configuration
 st.set_page_config(
     page_title="ImmHelp legal adviser AI", 
     page_icon="👽",
@@ -9,60 +8,123 @@ st.set_page_config(
 )
 
 if "all_chats" not in st.session_state:
-    st.session_state.all_chats = {
-        "Project Brainstorm": [
-            {"role": "assistant", "content": "Hello! Let's flesh out your next big idea."}
-        ],
-        "Code Debugging": [
-            {"role": "assistant", "content": "Paste your stack trace or code snippet here, and let's fix it."}
-        ]
-    }
+    st.session_state.all_chats = {}
 
 if "active_chat" not in st.session_state:
-    st.session_state.active_chat = "Project Brainstorm"
+    st.session_state.active_chat = "Legal Adviser"
+
+if "opened_options_for" not in st.session_state:
+    st.session_state.opened_options_for = None
+
 
 # SIDEBAR
 with st.sidebar:
     st.markdown("# 👽 ImmHelp")
     st.markdown("---")
-    
-    
     st.markdown("<h2 style='text-align: center;'> Your Chats </h2>", unsafe_allow_html=True)
     
-    # Sidebar Action: New Chat
+    for chat_name in list(st.session_state.all_chats.keys()):
+        is_active = chat_name == st.session_state.active_chat
+        
+        row_col1, row_col2 = st.columns([4, 1])
+        
+        with row_col1:
+            btn_type = "primary" if is_active else "secondary"
+            if st.button(chat_name, key=f"select_{chat_name}", use_container_width=True, type = btn_type):
+                st.session_state.active_chat = chat_name
+                st.session_state.opened_options_for = None 
+                st.rerun()
+                
+        with row_col2:
+            if st.button("⋮", key=f"options_trigger_{chat_name}", use_container_width=True):
+                if st.session_state.opened_options_for == chat_name:
+                    st.session_state.opened_options_for = None
+                else:
+                    st.session_state.opened_options_for = chat_name
+                st.rerun()
+
+        if st.session_state.opened_options_for == chat_name:
+            with st.container(border=True):
+
+                # Edit
+                new_title = st.text_input(
+                    "✏️ Edit", 
+                    value=chat_name, 
+                    key=f"rename_field_{chat_name}",
+                    label_visibility="visible"
+                )
+                if new_title != chat_name and new_title.strip() != "":
+                    st.session_state.all_chats[new_title] = st.session_state.all_chats.pop(chat_name)
+                    if st.session_state.active_chat == chat_name:
+                        st.session_state.active_chat = new_title
+                    st.session_state.opened_options_for = None
+                    st.rerun()
+                
+                # Delete
+                if st.button("🗑️ Delete", key=f"delete_btn_{chat_name}", type="primary", use_container_width=True):
+                    st.session_state.all_chats.pop(chat_name)
+                    if st.session_state.active_chat == chat_name:
+                        remaining_chats = list(st.session_state.all_chats.keys())
+                        st.session_state.active_chat = remaining_chats[0] if remaining_chats else "Legal Adviser"
+                    st.session_state.opened_options_for = None
+                    st.rerun()
+
+    st.write("")
     if st.button("➕ New Chat", use_container_width=True, type="primary"):
         new_chat_id = f"New Chat {len(st.session_state.all_chats) + 1}"
         st.session_state.all_chats[new_chat_id] = [
             {"role": "assistant", "content": "How can I help you?"}
         ]
         st.session_state.active_chat = new_chat_id
+        st.session_state.opened_options_for = None
         st.rerun()
-    # List available chats as navigation items
-    for chat_name in list(st.session_state.all_chats.keys()):
-        is_active = chat_name == st.session_state.active_chat
-        button_label = f"💬 {chat_name}" if is_active else f"  {chat_name}"
-        
-        if st.button(button_label, key=chat_name, use_container_width=True):
-            st.session_state.active_chat = chat_name
-            st.rerun()
 
-    
 
 # MAIN AREA
-st.markdown(f"# 🚀 {st.session_state.active_chat}")
-
-# Display the conversation history for the active chat
-for message in st.session_state.all_chats[st.session_state.active_chat]:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
-
-# INPUT
-if user_input := st.chat_input("Type your query or paste code here..."):
+if "all_chats" in st.session_state and st.session_state.active_chat in st.session_state.all_chats:
+    st.markdown(f"# {st.session_state.active_chat}")
+    st.markdown("---")
     
+    current_messages = st.session_state.all_chats[st.session_state.active_chat]
+    
+    if len(current_messages) == 0:
+        st.markdown("### Welcome! Ask a new question by typing below.")
+    else:
+        for message in current_messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+                
+else:
+    st.markdown("# Legal Adviser")
+    st.markdown("---")
+    st.markdown("### 📭 No active conversations found.")
+    st.caption("Click '➕ New Chat' in the sidebar or type a message below to start.")
+
+
+# --- INPUT ---
+if user_input := st.chat_input("Type your question here..."):
+    
+    if "all_chats" not in st.session_state or not st.session_state.all_chats:
+        st.session_state.all_chats = {}
+        st.session_state.active_chat = "New Chat 1"
+        
+    if st.session_state.active_chat not in st.session_state.all_chats:
+        st.session_state.all_chats[st.session_state.active_chat] = []
+
     st.session_state.all_chats[st.session_state.active_chat].append(
         {"role": "user", "content": user_input}
     )
+    
     with st.chat_message("user"):
         st.markdown(user_input)
         
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            ai_response = f"Simulated LLM response for: '{user_input}'"
+            st.markdown(ai_response)
+            
+    st.session_state.all_chats[st.session_state.active_chat].append(
+        {"role": "assistant", "content": ai_response}
+    )
+    
+    st.rerun()
