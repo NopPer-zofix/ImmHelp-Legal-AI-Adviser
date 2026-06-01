@@ -4,21 +4,94 @@ import requests
 # -----------------------------
 # BACKEND CONFIG
 # -----------------------------
+#Move to .env when assembling docker
 BACKEND_URL = "http://localhost:5000"
-HARDCODED_USER_ID = 1
-HARDCODED_CHAT_ID = 1
 
 
-def ask_backend(question: str, history: list) -> str:
-    """Send a question + chat history to the /ask endpoint and return the answer."""
+# -----------------------------
+# AUTH HELPERS
+# -----------------------------
+def api_register(email: str, password: str, username: str) -> dict:
+    try:
+        r = requests.post(
+            f"{BACKEND_URL}/users",
+            json={"email": email, "password": password, "username": username},
+            timeout=10,
+        )
+        if r.status_code == 201:
+            return {"ok": True, "user": r.json()}
+        return {"ok": False, "error": r.json().get("error", "Registration failed.")}
+    except requests.exceptions.ConnectionError:
+        return {"ok": False, "error": "Could not connect to the backend."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_login(email: str, password: str) -> dict:
+    """
+    The backend has no /login endpoint yet, so we fetch the user list workaround:
+    GET /users doesn't exist either — we attempt a known pattern by checking
+    credentials via a lightweight approach: try POST /users (will 409 if exists),
+    then fall back to fetching by scanning. For now we use a client-side
+    credential check against the stored session (stateless workaround until
+    a real /login endpoint is added to server.py).
+
+    Real flow: call a POST /login endpoint. We'll call GET /users/<id> after
+    storing credentials in session, but since we don't have an ID yet we POST
+    to /users — if 409 (email exists) we trust the password the user typed
+    and store it in session. A proper /login endpoint should be added to server.py.
+    """
+    try:
+        # Attempt registration — if 409, email exists; we accept login optimistically
+        r = requests.post(
+            f"{BACKEND_URL}/users",
+            json={"email": email, "password": password, "username": email.split("@")[0]},
+            timeout=10,
+        )
+        if r.status_code == 201:
+            # Account was just created — log them in directly
+            return {"ok": True, "user": r.json()}
+        elif r.status_code == 409:
+            # Email already registered — we cannot verify password without a /login endpoint.
+            # Return a clear message so the user knows they need the register flow or a real endpoint.
+            return {
+                "ok": False,
+                "error": (
+                    "This email is already registered. "
+                    "A /login endpoint is not yet implemented on the backend — "
+                    "please add it to server.py to support password verification."
+                ),
+            }
+        return {"ok": False, "error": r.json().get("error", "Login failed.")}
+    except requests.exceptions.ConnectionError:
+        return {"ok": False, "error": "Could not connect to the backend."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def api_create_chat(user_id: int) -> dict:
+    try:
+        r = requests.post(
+            f"{BACKEND_URL}/chats",
+            json={"user_id": user_id},
+            timeout=10,
+        )
+        if r.status_code == 201:
+            return {"ok": True, "chat": r.json()}
+        return {"ok": False, "error": r.json().get("error", "Could not create chat.")}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def ask_backend(question: str, history: list, user_id: int, chat_id: int) -> str:
     try:
         response = requests.post(
             f"{BACKEND_URL}/ask",
             json={
                 "question": question,
-                "history": history,
-                "user_id": HARDCODED_USER_ID,
-                "chat_id": HARDCODED_CHAT_ID,
+                "history":  history,
+                "user_id":  user_id,
+                "chat_id":  chat_id,
             },
             timeout=30,
         )
@@ -34,133 +107,222 @@ def ask_backend(question: str, history: list) -> str:
         return f"❌ Unexpected error: {str(e)}"
 
 
+# -----------------------------
+# PAGE CONFIG
+# -----------------------------
 st.set_page_config(
-    page_title="ImmHelp legal adviser AI", 
+    page_title="ImmHelp legal adviser AI",
     page_icon="👽",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-if "all_chats" not in st.session_state:
-    st.session_state.all_chats = {}
+# -----------------------------
+# SESSION STATE DEFAULTS
+# -----------------------------
+for key, default in {
+    "user":               None,   # {"id": ..., "email": ..., "username": ...}
+    "all_chats":          {},     # chat_name -> list of messages
+    "chat_ids":           {},     # chat_name -> backend chat id
+    "active_chat":        None,
+    "opened_options_for": None,
+    "auth_mode":          "login",  # "login" | "register"
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
 
-if "active_chat" not in st.session_state:
-    st.session_state.active_chat = "Legal Adviser"
 
-if "opened_options_for" not in st.session_state:
-    st.session_state.opened_options_for = None
+# ==============================
+# AUTH GATE
+# ==============================
+if st.session_state.user is None:
+
+    col_l, col_c, col_r = st.columns([1, 1.2, 1])
+    with col_c:
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.markdown("# 👽 ImmHelp")
+        st.markdown("### Your AI Immigration Legal Adviser")
+        st.markdown("---")
+
+        mode = st.session_state.auth_mode
+
+        # Tab toggle
+        tab_login, tab_register = st.tabs(["🔑 Login", "📝 Register"])
+
+        # ---- LOGIN TAB ----
+        with tab_login:
+            st.markdown("#### Welcome back")
+            login_email    = st.text_input("Email",    key="login_email",    placeholder="you@example.com")
+            login_password = st.text_input("Password", key="login_password", type="password", placeholder="••••••••")
+
+            if st.button("Login", use_container_width=True, type="primary", key="login_btn"):
+                if not login_email or not login_password:
+                    st.error("Please fill in both fields.")
+                else:
+                    with st.spinner("Logging in…"):
+                        result = api_login(login_email, login_password)
+                    if result["ok"]:
+                        st.session_state.user = result["user"]
+                        st.rerun()
+                    else:
+                        st.error(result["error"])
+
+        # ---- REGISTER TAB ----
+        with tab_register:
+            st.markdown("#### Create your account")
+            reg_username = st.text_input("Username", key="reg_username", placeholder="John Doe")
+            reg_email    = st.text_input("Email",    key="reg_email",    placeholder="you@example.com")
+            reg_password = st.text_input("Password", key="reg_password", type="password", placeholder="••••••••")
+            reg_confirm  = st.text_input("Confirm password", key="reg_confirm", type="password", placeholder="••••••••")
+
+            if st.button("Create account", use_container_width=True, type="primary", key="register_btn"):
+                if not all([reg_username, reg_email, reg_password, reg_confirm]):
+                    st.error("Please fill in all fields.")
+                elif reg_password != reg_confirm:
+                    st.error("Passwords do not match.")
+                else:
+                    with st.spinner("Creating account…"):
+                        result = api_register(reg_email, reg_password, reg_username)
+                    if result["ok"]:
+                        st.session_state.user = result["user"]
+                        st.rerun()
+                    else:
+                        st.error(result["error"])
+
+    st.stop()  # Nothing below renders until logged in
+
+
+# ==============================
+# MAIN APP  (user is logged in)
+# ==============================
+user    = st.session_state.user
+user_id = user["id"]
 
 
 # SIDEBAR
 with st.sidebar:
     st.markdown("# 👽 ImmHelp")
     st.markdown("---")
-    st.markdown("<h2 style='text-align: center;'> Your Chats </h2>", unsafe_allow_html=True)
-    
+
+    # User info + logout
+    st.markdown(f"👤 **{user['username']}**")
+    st.caption(user["email"])
+    if st.button("Logout", use_container_width=True):
+        for key in ["user", "all_chats", "chat_ids", "active_chat", "opened_options_for"]:
+            st.session_state[key] = {} if key in ("all_chats", "chat_ids") else None
+        st.rerun()
+
+    st.markdown("---")
+    st.markdown("<h2 style='text-align: center;'>Your Chats</h2>", unsafe_allow_html=True)
+
     for chat_name in list(st.session_state.all_chats.keys()):
         is_active = chat_name == st.session_state.active_chat
-        
+
         row_col1, row_col2 = st.columns([4, 1])
-        
+
         with row_col1:
             btn_type = "primary" if is_active else "secondary"
-            if st.button(chat_name, key=f"select_{chat_name}", use_container_width=True, type = btn_type):
-                st.session_state.active_chat = chat_name
-                st.session_state.opened_options_for = None 
+            if st.button(chat_name, key=f"select_{chat_name}", use_container_width=True, type=btn_type):
+                st.session_state.active_chat        = chat_name
+                st.session_state.opened_options_for = None
                 st.rerun()
-                
+
         with row_col2:
             if st.button("⋮", key=f"options_trigger_{chat_name}", use_container_width=True):
-                if st.session_state.opened_options_for == chat_name:
-                    st.session_state.opened_options_for = None
-                else:
-                    st.session_state.opened_options_for = chat_name
+                st.session_state.opened_options_for = (
+                    None if st.session_state.opened_options_for == chat_name else chat_name
+                )
                 st.rerun()
 
         if st.session_state.opened_options_for == chat_name:
             with st.container(border=True):
-
-                # Edit
                 new_title = st.text_input(
-                    "✏️ Edit", 
-                    value=chat_name, 
+                    "✏️ Edit",
+                    value=chat_name,
                     key=f"rename_field_{chat_name}",
-                    label_visibility="visible"
                 )
-                if new_title != chat_name and new_title.strip() != "":
+                if new_title != chat_name and new_title.strip():
                     st.session_state.all_chats[new_title] = st.session_state.all_chats.pop(chat_name)
+                    st.session_state.chat_ids[new_title]  = st.session_state.chat_ids.pop(chat_name, None)
                     if st.session_state.active_chat == chat_name:
                         st.session_state.active_chat = new_title
                     st.session_state.opened_options_for = None
                     st.rerun()
-                
-                # Delete
+
                 if st.button("🗑️ Delete", key=f"delete_btn_{chat_name}", type="primary", use_container_width=True):
                     st.session_state.all_chats.pop(chat_name)
+                    st.session_state.chat_ids.pop(chat_name, None)
                     if st.session_state.active_chat == chat_name:
-                        remaining_chats = list(st.session_state.all_chats.keys())
-                        st.session_state.active_chat = remaining_chats[0] if remaining_chats else "Legal Adviser"
+                        remaining = list(st.session_state.all_chats.keys())
+                        st.session_state.active_chat = remaining[0] if remaining else None
                     st.session_state.opened_options_for = None
                     st.rerun()
 
     st.write("")
     if st.button("➕ New Chat", use_container_width=True, type="primary"):
-        new_chat_id = f"New Chat {len(st.session_state.all_chats) + 1}"
-        st.session_state.all_chats[new_chat_id] = [
-            {"role": "assistant", "content": "How can I help you?"}
-        ]
-        st.session_state.active_chat = new_chat_id
-        st.session_state.opened_options_for = None
-        st.rerun()
+        with st.spinner("Creating chat…"):
+            result = api_create_chat(user_id)
+        if result["ok"]:
+            chat_id      = result["chat"]["id"]
+            new_chat_name = f"Chat {chat_id}"
+            st.session_state.all_chats[new_chat_name]  = [{"role": "assistant", "content": "How can I help you?"}]
+            st.session_state.chat_ids[new_chat_name]   = chat_id
+            st.session_state.active_chat               = new_chat_name
+            st.session_state.opened_options_for        = None
+            st.rerun()
+        else:
+            st.error(result["error"])
 
 
 # MAIN AREA
-if "all_chats" in st.session_state and st.session_state.active_chat in st.session_state.all_chats:
-    st.markdown(f"# {st.session_state.active_chat}")
+active = st.session_state.active_chat
+
+if active and active in st.session_state.all_chats:
+    st.markdown(f"# {active}")
     st.markdown("---")
-    
-    current_messages = st.session_state.all_chats[st.session_state.active_chat]
-    
-    if len(current_messages) == 0:
+
+    current_messages = st.session_state.all_chats[active]
+
+    if not current_messages:
         st.markdown("### Welcome! Ask a new question by typing below.")
     else:
         for message in current_messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
-                
 else:
-    st.markdown("# Legal Adviser")
+    st.markdown("# 👽 ImmHelp Legal Adviser")
     st.markdown("---")
-    st.markdown("### 📭 No active conversations found.")
-    st.caption("Click '➕ New Chat' in the sidebar or type a message below to start.")
+    st.markdown("### 📭 No active conversations.")
+    st.caption("Click '➕ New Chat' in the sidebar to get started.")
 
 
-# --- INPUT ---
+# INPUT
 if user_input := st.chat_input("Type your question here..."):
-    
-    if "all_chats" not in st.session_state or not st.session_state.all_chats:
-        st.session_state.all_chats = {}
-        st.session_state.active_chat = "New Chat 1"
-        
-    if st.session_state.active_chat not in st.session_state.all_chats:
-        st.session_state.all_chats[st.session_state.active_chat] = []
 
-    st.session_state.all_chats[st.session_state.active_chat].append(
-        {"role": "user", "content": user_input}
-    )
-    
+    # Auto-create a chat if none exists
+    if not active or active not in st.session_state.all_chats:
+        result = api_create_chat(user_id)
+        if not result["ok"]:
+            st.error(result["error"])
+            st.stop()
+        chat_id       = result["chat"]["id"]
+        active        = f"Chat {chat_id}"
+        st.session_state.all_chats[active] = []
+        st.session_state.chat_ids[active]  = chat_id
+        st.session_state.active_chat       = active
+
+    chat_id = st.session_state.chat_ids.get(active)
+
+    st.session_state.all_chats[active].append({"role": "user", "content": user_input})
+
     with st.chat_message("user"):
         st.markdown(user_input)
-        
+
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            # All messages except the one we just appended
-            history = st.session_state.all_chats[st.session_state.active_chat][:-1]
-            ai_response = ask_backend(user_input, history)
+            history     = st.session_state.all_chats[active][:-1]
+            ai_response = ask_backend(user_input, history, user_id, chat_id)
             st.markdown(ai_response)
-            
-    st.session_state.all_chats[st.session_state.active_chat].append(
-        {"role": "assistant", "content": ai_response}
-    )
-    
+
+    st.session_state.all_chats[active].append({"role": "assistant", "content": ai_response})
     st.rerun()
