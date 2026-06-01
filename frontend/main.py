@@ -1,4 +1,37 @@
 import streamlit as st
+import requests
+
+# -----------------------------
+# BACKEND CONFIG
+# -----------------------------
+BACKEND_URL = "http://localhost:5000"
+HARDCODED_USER_ID = 1
+HARDCODED_CHAT_ID = 1
+
+
+def ask_backend(question: str) -> str:
+    """Send a question to the /ask endpoint and return the answer."""
+    try:
+        response = requests.post(
+            f"{BACKEND_URL}/ask",
+            json={
+                "question": question,
+                "user_id": HARDCODED_USER_ID,
+                "chat_id": HARDCODED_CHAT_ID,
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response.json().get("answer", "No answer returned from server.")
+    except requests.exceptions.ConnectionError:
+        return "❌ Could not connect to the backend. Is the Flask server running on port 5000?"
+    except requests.exceptions.Timeout:
+        return "❌ The request timed out. The backend may be overloaded."
+    except requests.exceptions.HTTPError as e:
+        return f"❌ Backend error ({e.response.status_code}): {e.response.text}"
+    except Exception as e:
+        return f"❌ Unexpected error: {str(e)}"
+
 
 st.set_page_config(
     page_title="ImmHelp legal adviser AI", 
@@ -120,7 +153,7 @@ if user_input := st.chat_input("Type your question here..."):
         
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            ai_response = f"Simulated LLM response for: '{user_input}'"
+            ai_response = ask_backend(user_input)
             st.markdown(ai_response)
             
     st.session_state.all_chats[st.session_state.active_chat].append(

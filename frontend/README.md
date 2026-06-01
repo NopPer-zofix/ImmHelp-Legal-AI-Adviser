@@ -8,5 +8,5 @@ To run the webpage, you need to install the streamlit library beforehand:
 
 ## How to run
 to run the the application you need: 
-`streamlit run main.py`
+`python -m streamlit run main.py`
  
