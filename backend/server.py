@@ -272,6 +272,7 @@ def ask():
     question = data.get("question")
     user_id  = data.get("user_id")
     chat_id  = data.get("chat_id")
+    history  = data.get("history", [])  # list of {"role": "user"|"assistant", "content": "..."}
 
     if not question:
         return jsonify({"error": "question required"}), 400
@@ -300,21 +301,36 @@ def ask():
 
     context = "\n\n".join(results["documents"][0])
 
+    # Strip the "[assistant] " prefix stored in DB before sending to GPT
+    def clean_content(role, content):
+        if role == "assistant" and content.startswith("[assistant] "):
+            return content[len("[assistant] "):]
+        return content
+
+    conversation = [
+        {
+            "role":    "system",
+            "content": f"Answer using the provided context.\n\nContext:\n{context}"
+        }
+    ]
+
+    for msg in history:
+        role    = msg.get("role")
+        content = msg.get("content", "")
+        if role in ("user", "assistant"):
+            conversation.append({
+                "role":    role,
+                "content": clean_content(role, content)
+            })
+
+    conversation.append({"role": "user", "content": question})
+
     # -----------------------------------
     # GPT RESPONSE
     # -----------------------------------
     response = client.chat.completions.create(
         model="gpt-4.1-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": f"Answer using the provided context.\n\nContext:\n{context}"
-            },
-            {
-                "role": "user",
-                "content": question
-            }
-        ]
+        messages=conversation
     )
 
     answer = response.choices[0].message.content
