@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from openai import OpenAI
 from dotenv import load_dotenv
 from pypdf import PdfReader
+from werkzeug.security import generate_password_hash, check_password_hash
 import chromadb
 import os
 import uuid
@@ -160,7 +161,7 @@ def create_user():
     if db.query(User).filter(User.email == email).first():
         return jsonify({"error": "email already registered"}), 409
 
-    user = User(email=email, password=password, username=username)
+    user = User(email=email, password=generate_password_hash(password), username=username)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -179,6 +180,35 @@ def get_user(user_id):
 
     if not user:
         return jsonify({"error": "user not found"}), 404
+
+    return jsonify({
+        "id":       user.id,
+        "email":    user.email,
+        "username": user.username
+    })
+
+
+# -----------------------------
+# LOGIN ENDPOINT
+# -----------------------------
+@app.route("/login", methods=["POST"])
+def login():
+    db   = SessionLocal()
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"error": "invalid request"}), 400
+
+    email    = data.get("email")
+    password = data.get("password")
+
+    if not all([email, password]):
+        return jsonify({"error": "email and password are required"}), 400
+
+    user = db.query(User).filter(User.email == email).first()
+
+    if not user or not check_password_hash(user.password, password):
+        return jsonify({"error": "invalid email or password"}), 401
 
     return jsonify({
         "id":       user.id,
@@ -272,7 +302,7 @@ def ask():
     question = data.get("question")
     user_id  = data.get("user_id")
     chat_id  = data.get("chat_id")
-    history  = data.get("history", [])  # list of {"role": "user"|"assistant", "content": "..."}
+    history  = data.get("history", [])  # list of {"role": ..., "content": ...}
 
     if not question:
         return jsonify({"error": "question required"}), 400
@@ -301,36 +331,32 @@ def ask():
 
     context = "\n\n".join(results["documents"][0])
 
-    # Strip the "[assistant] " prefix stored in DB before sending to GPT
-    def clean_content(role, content):
-        if role == "assistant" and content.startswith("[assistant] "):
-            return content[len("[assistant] "):]
-        return content
+    # -----------------------------------
+    # BUILD MESSAGES WITH HISTORY
+    # -----------------------------------
+    system_message = {
+        "role": "system",
+        "content": f"Answer using the provided context.\n\nContext:\n{context}"
+    }
 
-    conversation = [
-        {
-            "role":    "system",
-            "content": f"Answer using the provided context.\n\nContext:\n{context}"
-        }
+    # Sanitise: keep only valid roles and string content
+    valid_roles = {"user", "assistant"}
+    history_messages = [
+        {"role": m["role"], "content": m["content"]}
+        for m in history
+        if isinstance(m, dict)
+        and m.get("role") in valid_roles
+        and isinstance(m.get("content"), str)
     ]
 
-    for msg in history:
-        role    = msg.get("role")
-        content = msg.get("content", "")
-        if role in ("user", "assistant"):
-            conversation.append({
-                "role":    role,
-                "content": clean_content(role, content)
-            })
-
-    conversation.append({"role": "user", "content": question})
+    messages = [system_message] + history_messages + [{"role": "user", "content": question}]
 
     # -----------------------------------
     # GPT RESPONSE
     # -----------------------------------
     response = client.chat.completions.create(
         model="gpt-4.1-mini",
-        messages=conversation
+        messages=messages
     )
 
     answer = response.choices[0].message.content
