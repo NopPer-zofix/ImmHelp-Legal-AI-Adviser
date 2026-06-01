@@ -4,7 +4,6 @@ import requests
 # -----------------------------
 # BACKEND CONFIG
 # -----------------------------
-#Move to .env when assembling docker
 BACKEND_URL = "http://localhost:5000"
 
 
@@ -28,40 +27,14 @@ def api_register(email: str, password: str, username: str) -> dict:
 
 
 def api_login(email: str, password: str) -> dict:
-    """
-    The backend has no /login endpoint yet, so we fetch the user list workaround:
-    GET /users doesn't exist either — we attempt a known pattern by checking
-    credentials via a lightweight approach: try POST /users (will 409 if exists),
-    then fall back to fetching by scanning. For now we use a client-side
-    credential check against the stored session (stateless workaround until
-    a real /login endpoint is added to server.py).
-
-    Real flow: call a POST /login endpoint. We'll call GET /users/<id> after
-    storing credentials in session, but since we don't have an ID yet we POST
-    to /users — if 409 (email exists) we trust the password the user typed
-    and store it in session. A proper /login endpoint should be added to server.py.
-    """
     try:
-        # Attempt registration — if 409, email exists; we accept login optimistically
         r = requests.post(
-            f"{BACKEND_URL}/users",
-            json={"email": email, "password": password, "username": email.split("@")[0]},
+            f"{BACKEND_URL}/login",
+            json={"email": email, "password": password},
             timeout=10,
         )
-        if r.status_code == 201:
-            # Account was just created — log them in directly
+        if r.status_code == 200:
             return {"ok": True, "user": r.json()}
-        elif r.status_code == 409:
-            # Email already registered — we cannot verify password without a /login endpoint.
-            # Return a clear message so the user knows they need the register flow or a real endpoint.
-            return {
-                "ok": False,
-                "error": (
-                    "This email is already registered. "
-                    "A /login endpoint is not yet implemented on the backend — "
-                    "please add it to server.py to support password verification."
-                ),
-            }
         return {"ok": False, "error": r.json().get("error", "Login failed.")}
     except requests.exceptions.ConnectionError:
         return {"ok": False, "error": "Could not connect to the backend."}
