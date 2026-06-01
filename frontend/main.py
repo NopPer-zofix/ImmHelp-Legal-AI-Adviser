@@ -9,13 +9,14 @@ HARDCODED_USER_ID = 1
 HARDCODED_CHAT_ID = 1
 
 
-def ask_backend(question: str) -> str:
-    """Send a question to the /ask endpoint and return the answer."""
+def ask_backend(question: str, history: list) -> str:
+    """Send a question + chat history to the /ask endpoint and return the answer."""
     try:
         response = requests.post(
             f"{BACKEND_URL}/ask",
             json={
                 "question": question,
+                "history": history,
                 "user_id": HARDCODED_USER_ID,
                 "chat_id": HARDCODED_CHAT_ID,
             },
@@ -153,7 +154,9 @@ if user_input := st.chat_input("Type your question here..."):
         
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            ai_response = ask_backend(user_input)
+            # All messages except the one we just appended
+            history = st.session_state.all_chats[st.session_state.active_chat][:-1]
+            ai_response = ask_backend(user_input, history)
             st.markdown(ai_response)
             
     st.session_state.all_chats[st.session_state.active_chat].append(
