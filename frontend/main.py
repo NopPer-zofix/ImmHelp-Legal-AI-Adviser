@@ -42,6 +42,17 @@ def api_login(email: str, password: str) -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def fetch_user_chat_count(user_id: int) -> int:
+    """Returns how many chats this user already has in the backend."""
+    try:
+        r = requests.get(f"{BACKEND_URL}/chats/{user_id}", timeout=10)
+        if r.status_code == 200:
+            return len(r.json())
+    except Exception:
+        pass
+    return 0
+
+
 def api_create_chat(user_id: int) -> dict:
     try:
         r = requests.post(
@@ -100,6 +111,7 @@ for key, default in {
     "active_chat":        None,
     "opened_options_for": None,
     "auth_mode":          "login",  # "login" | "register"
+    "user_chat_count":    0,      # how many chats this user has ever created
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -136,6 +148,7 @@ if st.session_state.user is None:
                         result = api_login(login_email, login_password)
                     if result["ok"]:
                         st.session_state.user = result["user"]
+                        st.session_state.user_chat_count = fetch_user_chat_count(result["user"]["id"])
                         st.rerun()
                     else:
                         st.error(result["error"])
@@ -158,6 +171,7 @@ if st.session_state.user is None:
                         result = api_register(reg_email, reg_password, reg_username)
                     if result["ok"]:
                         st.session_state.user = result["user"]
+                        st.session_state.user_chat_count = 0  # brand new user
                         st.rerun()
                     else:
                         st.error(result["error"])
@@ -183,6 +197,7 @@ with st.sidebar:
     if st.button("Logout", use_container_width=True):
         for key in ["user", "all_chats", "chat_ids", "active_chat", "opened_options_for"]:
             st.session_state[key] = {} if key in ("all_chats", "chat_ids") else None
+        st.session_state.user_chat_count = 0
         st.rerun()
 
     st.markdown("---")
@@ -236,8 +251,9 @@ with st.sidebar:
         with st.spinner("Creating chat…"):
             result = api_create_chat(user_id)
         if result["ok"]:
-            chat_id      = result["chat"]["id"]
-            new_chat_name = f"Chat {chat_id}"
+            chat_id = result["chat"]["id"]
+            st.session_state.user_chat_count += 1
+            new_chat_name = f"Chat {st.session_state.user_chat_count}"
             st.session_state.all_chats[new_chat_name]  = [{"role": "assistant", "content": "How can I help you?"}]
             st.session_state.chat_ids[new_chat_name]   = chat_id
             st.session_state.active_chat               = new_chat_name
@@ -278,8 +294,9 @@ if user_input := st.chat_input("Type your question here..."):
         if not result["ok"]:
             st.error(result["error"])
             st.stop()
-        chat_id       = result["chat"]["id"]
-        active        = f"Chat {chat_id}"
+        chat_id = result["chat"]["id"]
+        st.session_state.user_chat_count += 1
+        active  = f"Chat {st.session_state.user_chat_count}"
         st.session_state.all_chats[active] = []
         st.session_state.chat_ids[active]  = chat_id
         st.session_state.active_chat       = active
