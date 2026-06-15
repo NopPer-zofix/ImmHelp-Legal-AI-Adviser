@@ -10,14 +10,14 @@ BACKEND_URL = "http://localhost:5000"
 # PAGE CONFIG  (must be first)
 # ==============================
 st.set_page_config(
-    page_title="ImmHelp legal adviser AI",
+    page_title="ImmHelp legal assistant",
     page_icon="👽",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # ==============================
-# GLOBAL CSS  — minimal overrides only
+# GLOBAL CSS
 # ==============================
 st.markdown("""
 <style>
