@@ -110,6 +110,18 @@ def api_create_chat(user_id: int) -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def api_save_message(user_id: int, chat_id: int, message: str, role: str = "assistant") -> None:
+    """Fire-and-forget: persist a standalone message to the DB."""
+    try:
+        requests.post(
+            f"{BACKEND_URL}/messages",
+            json={"user_id": user_id, "chat_id": chat_id, "message": message, "role": role},
+            timeout=10,
+        )
+    except Exception:
+        pass  # non-critical — session state already has the message
+
+
 def ask_backend(question: str, history: list, user_id: int, chat_id: int) -> str:
     try:
         response = requests.post(
@@ -305,6 +317,7 @@ with st.sidebar:
             st.session_state.chat_ids[new_chat_name]   = chat_id
             st.session_state.active_chat               = new_chat_name
             st.session_state.opened_options_for        = None
+            api_save_message(user_id, chat_id, "How can I help you?", role="assistant")
             st.rerun()
         else:
             st.error(result["error"])
@@ -347,6 +360,7 @@ if user_input := st.chat_input("Type your question here..."):
         st.session_state.all_chats[active] = [{"role": "assistant", "content": "How can I help you?"}]
         st.session_state.chat_ids[active]  = chat_id
         st.session_state.active_chat       = active
+        api_save_message(user_id, chat_id, "How can I help you?", role="assistant")
 
     chat_id = st.session_state.chat_ids.get(active)
 
