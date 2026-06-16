@@ -566,12 +566,15 @@ with st.sidebar:
         loader.empty()
         if result["ok"]:
             chat_id = result["chat"]["id"]
+            greeting = "How can I help you today?"
             st.session_state.user_chat_count += 1
             new_name = f"Chat {st.session_state.user_chat_count}"
-            st.session_state.all_chats[new_name]  = [{"role": "assistant", "content": "How can I help you today?"}]
+            st.session_state.all_chats[new_name]  = [{"role": "assistant", "content": greeting}]
             st.session_state.chat_ids[new_name]   = chat_id
             st.session_state.active_chat          = new_name
             st.session_state.opened_options_for   = None
+            # Persist the initial greeting so it survives a reload
+            api_save_message(user_id, chat_id, greeting, role="assistant")
             st.rerun()
         else:
             st.error(result["error"])
