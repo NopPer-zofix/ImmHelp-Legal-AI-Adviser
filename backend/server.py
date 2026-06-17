@@ -360,6 +360,9 @@ def ask():
     if not question:
         return jsonify({"error": "question required"}), 400
 
+    if len(question.strip()) < 10:
+        return jsonify({"answer": "Your request is too short for me to properly answer it. Please describe your immigration or study-in-Cyprus question in more detail."})
+
     # Validate user
     if not db.query(User).filter(User.id == user_id).first():
         return jsonify({"error": "user not found"}), 404
