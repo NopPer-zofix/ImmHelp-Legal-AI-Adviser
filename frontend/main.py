@@ -305,6 +305,17 @@ def load_user_chats(user_id: int) -> tuple[dict, dict, int]:
     return all_chats, chat_ids, len(all_chats)
 
 
+def make_new_chat_name() -> str:
+    """Return a unique label for a freshly created chat ('New Chat', then 'New Chat 2', …)."""
+    base = "New Chat"
+    if base not in st.session_state.all_chats:
+        return base
+    n = 2
+    while f"{base} {n}" in st.session_state.all_chats:
+        n += 1
+    return f"{base} {n}"
+
+
 def api_create_chat(user_id: int) -> dict:
     try:
         r = requests.post(f"{BACKEND_URL}/chats", json={"user_id": user_id}, timeout=10)
@@ -567,8 +578,7 @@ with st.sidebar:
         if result["ok"]:
             chat_id = result["chat"]["id"]
             greeting = "How can I help you today?"
-            st.session_state.user_chat_count += 1
-            new_name = f"Chat {st.session_state.user_chat_count}"
+            new_name = make_new_chat_name()
             st.session_state.all_chats[new_name]  = [{"role": "assistant", "content": greeting}]
             st.session_state.chat_ids[new_name]   = chat_id
             st.session_state.active_chat          = new_name
@@ -698,8 +708,7 @@ if user_input := st.chat_input("Ask about visas, permits, citizenship…"):
             st.error(result["error"])
             st.stop()
         chat_id = result["chat"]["id"]
-        st.session_state.user_chat_count += 1
-        active = f"Chat {st.session_state.user_chat_count}"
+        active = make_new_chat_name()
         st.session_state.all_chats[active] = []
         st.session_state.chat_ids[active]   = chat_id
         st.session_state.active_chat       = active
