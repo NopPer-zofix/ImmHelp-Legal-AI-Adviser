@@ -93,7 +93,7 @@ export default function ChatApp({ user, onLogout }) {
                 <Composer key={active.id} onSend={send} busy={isPending} picker={picker} />
               </ComposerGate>
               <p className="disclaimer">
-                ImmHelp can make mistakes. Confirm important details with the Civil Registry and Migration Department.
+                ImmHelp can make mistakes. Confirm important details with professionals.
               </p>
             </div>
           </>

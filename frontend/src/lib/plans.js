@@ -1,7 +1,7 @@
 // Plan settings for the paid-access mock-up. Prices and limits are placeholders:
 // change them here and the whole UI follows.
 
-export const FREE_DAILY_LIMIT = 10;
+export const FREE_DAILY_LIMIT = 5;
 
 // Start warning the user when this many free messages are left
 export const LOW_MESSAGES_WARNING = 3;
