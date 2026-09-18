@@ -5,7 +5,11 @@ from pypdf import PdfReader
 from werkzeug.security import generate_password_hash, check_password_hash
 import chromadb
 import os
+import re
+import sys
 import uuid
+
+import compaction
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -14,6 +18,14 @@ from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
 from sqlalchemy.sql import func
 
 load_dotenv()
+
+# Windows consoles are usually cp125x/cp1251: a Greek document name in a log line
+# would otherwise raise UnicodeEncodeError and take startup down with it.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except (AttributeError, ValueError):
+        pass
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -55,6 +67,23 @@ class Message(Base):
     chat_id    = Column(Integer, ForeignKey("chats.id"), nullable=False)
     message    = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ChatState(Base):
+    """Per-chat state that is not itself a message.
+
+    `compacted_through_id` is a watermark, not a delete: every message stays in the
+    messages table for /messages, but anything at or below the watermark has been
+    folded into `profile` and is no longer re-sent to the model on each turn.
+    """
+    __tablename__ = "chat_state"
+
+    chat_id              = Column(Integer, ForeignKey("chats.id"), primary_key=True)
+    profile              = Column(String, nullable=False, default="")
+    compacted_through_id = Column(Integer, nullable=False, default=0)
+    last_topics          = Column(String, nullable=False, default="")
+    updated_at           = Column(DateTime(timezone=True), server_default=func.now(),
+                                  onupdate=func.now())
 
 
 app = Flask(__name__)
@@ -102,36 +131,138 @@ def chunk_text(text, chunk_size=1000):
 # -----------------------------
 # INGEST PDFs
 # -----------------------------
-def ingest_pdf(file_path):
-    print(f"Ingesting: {file_path}")
+def ingest_pdf(file_path, topic):
+    # Already indexed - checked once per file, not once per chunk
+    existing = collection.get(where={"source": file_path})
+    if len(existing["ids"]) > 0:
+        return
+
+    print(f"Ingesting [{topic}]: {file_path}")
     text   = read_pdf(file_path)
     chunks = chunk_text(text)
 
     for chunk in chunks:
-        existing = collection.get(where={"source": file_path})
-        if len(existing["ids"]) > 0:
-            return
-
         embedding = create_embedding(chunk)
         collection.add(
             documents=[chunk],
             embeddings=[embedding],
             ids=[str(uuid.uuid4())],
-            metadatas=[{"source": file_path}]
+            metadatas=[{"source": file_path, "topic": topic}]
         )
     print("Done")
 
 
+def purge_untagged_chunks():
+    """Drop chunks indexed before topics existed - they carry no `topic` metadata
+    and stale paths, so a topic-filtered query would never return them."""
+    existing = collection.get(include=["metadatas"])
+    stale = [
+        chunk_id
+        for chunk_id, meta in zip(existing["ids"], existing["metadatas"])
+        if not (meta or {}).get("topic")
+    ]
+    if stale:
+        print(f"Removing {len(stale)} untagged chunks from a previous index...")
+        collection.delete(ids=stale)
+
+
 # -----------------------------
-# SYSTEM PROMPT
+# PROMPTS
 # -----------------------------
-_prompt_path = os.path.join(os.path.dirname(__file__), "system_prompt.txt")
-try:
-    with open(_prompt_path, "r", encoding="utf-8") as f:
-        SYSTEM_PROMPT = f.read().strip()
-except FileNotFoundError:
-    SYSTEM_PROMPT = ""
-    print(f"Warning: system_prompt.txt not found at {_prompt_path}. Proceeding without it.")
+# The old single system_prompt.txt is superseded by these: shared rules live in
+# system_prompt_base.txt, everything topic-specific in the per-topic files.
+_BASE_DIR = os.path.dirname(__file__)
+
+
+def load_prompt(filename):
+    path = os.path.join(_BASE_DIR, filename)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        print(f"Warning: {filename} not found at {path}. Proceeding without it.")
+        return ""
+
+
+# Shared rules, prepended to whichever topic prompt the router picks
+SYSTEM_PROMPT = load_prompt("system_prompt_base.txt")
+
+# Router: reads the question and replies with topic labels only
+ORCHESTRATOR_PROMPT = load_prompt("sys_prompt_orchestrator.txt")
+
+# GENERAL deliberately has no specialist prompt - it runs on the base prompt alone
+TOPIC_PROMPTS = {
+    "VISA":        load_prompt("system_prompt_visa.txt"),
+    "TRANSPORT":   load_prompt("system_prompt_transport.txt"),
+    "REAL_ESTATE": load_prompt("system_prompt_realestate.txt"),
+    "GENERAL":     "",
+}
+
+# Topic label -> documents/<folder>, which is also the `topic` tag on each chunk
+TOPIC_FOLDERS = {
+    "VISA":        "visa",
+    "TRANSPORT":   "transport",
+    "REAL_ESTATE": "real_estate",
+    "GENERAL":     "general",
+}
+
+OUT_OF_SCOPE_ANSWER = (
+    "Your request is not clear, I am an AI which is trained for immigration help answers. "
+    "Please use me accordingly."
+)
+
+NO_CONTEXT_NOTE = (
+    "No reference documents matched this question. Answer from general knowledge within the "
+    "rules above, and tell the user which details they must confirm with the competent authority."
+)
+
+
+# -----------------------------
+# ROUTER
+# -----------------------------
+def classify_topic(question, history_messages, prior_topics=""):
+    """Ask the router which topic prompt should handle this question.
+    Returns a list of labels, or ["OUT_OF_SCOPE"]. Falls back to GENERAL.
+
+    All the router needs is what topic the chat is currently on. The previous turn's
+    labels say that in ~10 tokens; the recent user turns say it in ~120. Re-sending
+    the assistant answers costs ~700 tokens each and adds almost no routing signal.
+    """
+    if not ORCHESTRATOR_PROMPT:
+        return ["GENERAL"]
+
+    if prior_topics:
+        hint = [{"role": "user",
+                 "content": f"[the previous turn in this chat was routed: {prior_topics}]"}]
+    else:
+        hint = [m for m in history_messages if m.get("role") == "user"][-3:]
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            temperature=0,
+            max_tokens=16,
+            messages=(
+                [{"role": "system", "content": ORCHESTRATOR_PROMPT}]
+                + hint
+                + [{"role": "user", "content": question}]
+            )
+        )
+        raw = response.choices[0].message.content or ""
+    except Exception as e:
+        print(f"Router call failed ({e}); falling back to GENERAL.")
+        return ["GENERAL"]
+
+    # Strip stray punctuation the model may append to a label
+    labels = [re.sub(r"[^A-Z_]", "", part.upper()) for part in raw.split(",")]
+    labels = [l for l in labels if l in TOPIC_PROMPTS or l == "OUT_OF_SCOPE"]
+
+    if not labels:
+        print(f"Router returned an unusable label ({raw!r}); falling back to GENERAL.")
+        return ["GENERAL"]
+    if "OUT_OF_SCOPE" in labels:
+        return ["OUT_OF_SCOPE"]
+    return labels[:2]
 
 
 # -----------------------------
@@ -139,9 +270,19 @@ except FileNotFoundError:
 # -----------------------------
 DOCUMENTS_PATH = "./documents"
 
-for filename in os.listdir(DOCUMENTS_PATH):
-    if filename.endswith(".pdf"):
-        ingest_pdf(os.path.join(DOCUMENTS_PATH, filename))
+purge_untagged_chunks()
+
+# Each sub-folder is a topic; its name becomes the `topic` tag on every chunk inside
+for label, folder in TOPIC_FOLDERS.items():
+    folder_path = os.path.join(DOCUMENTS_PATH, folder)
+
+    if not os.path.isdir(folder_path):
+        print(f"Warning: {folder_path} is missing, nothing ingested for {label}.")
+        continue
+
+    for filename in sorted(os.listdir(folder_path)):
+        if filename.lower().endswith(".pdf"):
+            ingest_pdf(os.path.join(folder_path, filename), folder)
 
 
 # -----------------------------
@@ -342,6 +483,53 @@ def create_message():
 
 
 # -----------------------------
+# CHAT HISTORY
+# -----------------------------
+ASSISTANT_PREFIX = "[assistant] "
+
+
+def load_history(db, chat_id, after_id, before_id):
+    """Rebuild the conversation from Postgres as (ids, messages), oldest first.
+
+    Role is recovered from the stored "[assistant] " prefix, which is how rows have
+    always been written. Returns ids in parallel so compaction can turn a position in
+    the list back into a watermark.
+    """
+    rows = (
+        db.query(Message)
+        .filter(Message.chat_id == chat_id,
+                Message.id > after_id,
+                Message.id < before_id)
+        .order_by(Message.id)
+        .all()
+    )
+
+    ids, messages = [], []
+    for row in rows:
+        if row.message.startswith(ASSISTANT_PREFIX):
+            messages.append({"role": "assistant",
+                             "content": row.message[len(ASSISTANT_PREFIX):]})
+        else:
+            messages.append({"role": "user", "content": row.message})
+        ids.append(row.id)
+
+    return ids, messages
+
+
+def get_chat_state(db, chat_id):
+    state = db.query(ChatState).filter(ChatState.chat_id == chat_id).first()
+
+    if not state:
+        state = ChatState(chat_id=chat_id, profile="",
+                          compacted_through_id=0, last_topics="")
+        db.add(state)
+        db.commit()
+        db.refresh(state)
+
+    return state
+
+
+# -----------------------------
 # RAG ENDPOINT
 # -----------------------------
 @app.route("/ask", methods=["POST"])
@@ -355,7 +543,7 @@ def ask():
     question = data.get("question")
     user_id  = data.get("user_id")
     chat_id  = data.get("chat_id")
-    history  = data.get("history", [])  # list of {"role": ..., "content": ...}
+    history  = data.get("history", [])  # optional fallback; history is read from the DB
 
     if not question:
         return jsonify({"error": "question required"}), 400
@@ -372,40 +560,105 @@ def ask():
         return jsonify({"error": "chat not found"}), 404
 
     # Save message to PostgreSQL
-    db.add(Message(user_id=user_id, chat_id=chat_id, message=question))
+    user_message = Message(user_id=user_id, chat_id=chat_id, message=question)
+    db.add(user_message)
+    db.commit()
+    db.refresh(user_message)
+
+    # -----------------------------------
+    # HISTORY
+    # -----------------------------------
+    # Authoritative history comes from Postgres, not the request body: one source of
+    # truth, and it gives compaction somewhere to keep its state.
+    state = get_chat_state(db, chat_id)
+    history_ids, history_messages = load_history(
+        db, chat_id,
+        after_id=state.compacted_through_id,
+        before_id=user_message.id
+    )
+
+    # Clients that pass their own history still work on a chat with no stored rows
+    if not history_messages and history:
+        valid_roles = {"user", "assistant"}
+        history_messages = [
+            {"role": m["role"], "content": m["content"]}
+            for m in history
+            if isinstance(m, dict)
+            and m.get("role") in valid_roles
+            and isinstance(m.get("content"), str)
+        ]
+        history_ids = []
+
+    # -----------------------------------
+    # COMPACTION
+    # -----------------------------------
+    # Only once the chat crosses the high-water mark. The dropped turns stay in
+    # Postgres for /messages; the watermark just stops them being re-sent every turn.
+    if history_ids and compaction.needs_compaction(history_messages):
+        dropped, kept = compaction.split_for_compaction(history_messages)
+
+        if dropped:
+            state.profile = compaction.extract_profile(client, dropped, state.profile)
+            state.compacted_through_id = history_ids[len(dropped) - 1]
+            db.commit()
+            history_messages = kept
+            print(f"Compacted chat {chat_id}: folded {len(dropped)} messages into the "
+                  f"profile, watermark now {state.compacted_through_id}")
+
+    # -----------------------------------
+    # ROUTE THE QUESTION
+    # -----------------------------------
+    topics = classify_topic(question, history_messages, state.last_topics)
+
+    if topics == ["OUT_OF_SCOPE"]:
+        # last_topics is deliberately left alone - a refusal should not become the
+        # anchor that the next follow-up gets routed against
+        db.add(Message(
+            user_id=user_id,
+            chat_id=chat_id,
+            message=f"[assistant] {OUT_OF_SCOPE_ANSWER}"
+        ))
+        db.commit()
+        return jsonify({"answer": OUT_OF_SCOPE_ANSWER, "topics": topics})
+
+    state.last_topics = ",".join(topics)
     db.commit()
 
     # -----------------------------------
-    # VECTOR SEARCH
+    # VECTOR SEARCH, LIMITED TO THE ROUTED TOPICS
     # -----------------------------------
     question_embedding = create_embedding(question)
 
+    # "general" is always searched alongside the routed folders as a fallback
+    folders = sorted({TOPIC_FOLDERS[t] for t in topics} | {"general"})
+
     results = collection.query(
         query_embeddings=[question_embedding],
-        n_results=5
+        n_results=5,
+        where={"topic": {"$in": folders}}
     )
 
-    context = "\n\n".join(results["documents"][0])
+    documents = results["documents"][0] if results["documents"] else []
+    context   = "\n\n".join(documents)
 
     # -----------------------------------
-    # BUILD MESSAGES WITH HISTORY
+    # BUILD MESSAGES: base + topic prompt(s) + context + history
     # -----------------------------------
-    system_message = {
-        "role": "system",
-        "content": "\n\n".join(filter(None, [SYSTEM_PROMPT, f"Answer using the provided context.\n\nContext:\n{context}"]))
-    }
+    context_block = (
+        f"Answer using the provided context.\n\nContext:\n{context}"
+        if context else NO_CONTEXT_NOTE
+    )
 
-    # Sanitise: keep only valid roles and string content
-    valid_roles = {"user", "assistant"}
-    history_messages = [
-        {"role": m["role"], "content": m["content"]}
-        for m in history
-        if isinstance(m, dict)
-        and m.get("role") in valid_roles
-        and isinstance(m.get("content"), str)
-    ]
+    system_prompt = "\n\n".join(filter(None,
+        [SYSTEM_PROMPT] + [TOPIC_PROMPTS.get(t, "") for t in topics]
+    ))
 
-    messages = [system_message] + history_messages + [{"role": "user", "content": question}]
+    # Cache-friendly order: [system][profile][history][context][question].
+    # The context changes every turn, so it goes last - keeping it in the system
+    # message would put the whole history downstream of a varying block.
+    messages = compaction.build_messages(
+        system_prompt, state.profile, history_messages, context_block, question
+    )
 
     # -----------------------------------
     # GPT RESPONSE
@@ -421,7 +674,7 @@ def ask():
     db.add(Message(user_id=user_id, chat_id=chat_id, message=f"[assistant] {answer}"))
     db.commit()
 
-    return jsonify({"answer": answer})
+    return jsonify({"answer": answer, "topics": topics})
 
 
 if __name__ == "__main__":
