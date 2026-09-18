@@ -1,0 +1,81 @@
+{
+  "_comment": "Files a user can be given a download link to. title is required - an entry with a null title is never offered. Descriptions are what the model matches against when deciding which form to hand over, so make them say what the form is FOR, not just what it is called.",
+
+  "TOM7DEN.pdf": {
+    "title": "Form TOM 7D - Driving licence application (English)",
+    "description": "Apply for a Cypriot driving licence, a duplicate of one, or conversion of a foreign licence into a Cypriot one.",
+    "language": "en"
+  },
+  "TOM7D.pdf": {
+    "title": "Έντυπο ΤΟΜ 7Δ - Αίτηση άδειας οδήγησης (Greek)",
+    "description": "Greek version of the driving licence application. Same form as TOM 7D (English).",
+    "language": "el"
+  },
+  "Acompanying doc of application 7D for obtaining driving licence.pdf": {
+    "title": "Supporting documents for form TOM 7D",
+    "description": "Checklist of what to bring with a TOM 7D application: identity card or passport, Yellow Slip for EU citizens or Pink Slip (residence permit) for third-country nationals, and one recent colour photograph 45 mm high by 35 mm wide.",
+    "language": "el"
+  },
+  "TOM 25B.pdf": {
+    "title": "Form TOM 25B - Application for a driving test",
+    "description": "Apply to sit the driving licence examination. The notes on the reverse must be read before the form is completed.",
+    "language": "el"
+  },
+  "TOM-26A.pdf": {
+    "title": "Form TOM 26A - International Driving Permit application",
+    "description": "Apply for an International Driving Permit. Bilingual Greek and English form.",
+    "language": "el/en"
+  },
+  "SORN12ΒEN.pdf": {
+    "title": "Form TOM 12B - Vehicle immobilisation notice (English)",
+    "description": "Declare a vehicle off the road under Article 5B of the Motor Vehicles and Traffic Law, so road tax is not due on it. Using a vehicle that has been declared immobilised is a criminal offence.",
+    "language": "en"
+  },
+  "SORN12Β.pdf": {
+    "title": "Έντυπο ΤΟΜ 12Β - Ειδοποίηση ακινητοποίησης οχήματος (Greek)",
+    "description": "Greek version of the vehicle immobilisation notice. Same form as TOM 12B (English).",
+    "language": "el"
+  },
+  "ΤΟΜ_46ΒEN.pdf": {
+    "title": "Form TOM 46B - Replacing a lost or destroyed official document (English)",
+    "description": "Responsible declaration and application to have a driving licence or a vehicle registration certificate reissued after it has been lost or destroyed.",
+    "language": "en"
+  },
+  "TOM46B.pdf": {
+    "title": "Έντυπο ΤΟΜ 46Β - Υπεύθυνη δήλωση και αίτηση έκδοσης επίσημου εγγράφου (Greek)",
+    "description": "Greek version of the replacement application for a lost or destroyed driving licence or registration certificate. Same form as TOM 46B (English).",
+    "language": "el"
+  },
+  "Driver Training Certificate.pdf": {
+    "title": "Driver training certificate - categories A and B+E",
+    "description": "Road Transport Department certificate confirming the training of candidate drivers for licence categories A and B+E.",
+    "language": "el"
+  },
+  "Notice Motorcycle Driving License 2013.pdf": {
+    "title": "Notice - motorcycle driving licences",
+    "description": "Road Transport Department announcement on the criteria for motorcycle licences under Driving Licence Law 79(I)/2012, in force since 19 January 2013, which amended the 2001 law to implement EU Directive 2006/126/EC.",
+    "language": "el"
+  },
+  "DoRT_MOT_Test.pdf": {
+    "title": "Vehicle inspection (MOT) manual",
+    "description": "Road Transport Department manual for the technical inspection of saloon cars and light trucks up to three tonnes gross load. Reference material describing what an inspection checks, not a form to fill in.",
+    "language": "en"
+  },
+
+  "_scanned": "TOM 101, TOM 153E, TOM 9Γ and TOM 7D are scans with no text layer. They are offered as downloads but are NOT searchable - nothing in them can be quoted or retrieved. OCR them if their content should be answerable from.",
+  "TOM 101.pdf": {
+    "title": "Form TOM 101 - Application for an accelerated practical driving test",
+    "description": "Apply to sit the practical driving test on an accelerated basis instead of waiting for an ordinary appointment.",
+    "language": "el"
+  },
+  "TOM 153E.pdf": {
+    "title": "Form TOM 153E - Medical form for a driving licence application",
+    "description": "Medical examination form that must accompany a driving licence application from an applicant over 70 years old, an applicant with a disability, or anyone applying for categories C, C+E, D or D+E, subcategories C1, C1+E, D1 or D1+E, or special classes G, H and I.",
+    "language": "el"
+  },
+  "ΤΟΜ9Γ.pdf": {
+    "title": "Form TOM 9Γ - Change of ownership of a vehicle",
+    "description": "Declare the transfer of a vehicle to a new owner. Needed whenever a vehicle changes hands.",
+    "language": "el"
+  }
+}

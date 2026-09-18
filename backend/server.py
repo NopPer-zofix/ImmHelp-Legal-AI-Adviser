@@ -1,12 +1,16 @@
-from flask import Flask, request, jsonify, g
+from flask import Flask, request, jsonify, g, send_from_directory
 from openai import OpenAI
 from dotenv import load_dotenv
 from pypdf import PdfReader
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.exceptions import NotFound
+from urllib.parse import quote
 import chromadb
+import json
 import os
 import re
 import sys
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 
@@ -58,8 +62,16 @@ def read_pdf(file_path):
     reader = PdfReader(file_path)
     text = ""
     for page in reader.pages:
-        text += page.extract_text() + "\n"
+        text += (page.extract_text() or "") + "\n"
     return text
+
+
+def read_document(file_path):
+    if file_path.lower().endswith(".pdf"):
+        return read_pdf(file_path)
+
+    with open(file_path, "r", encoding="utf-8") as f:
+        return f.read()
 
 
 # -----------------------------
@@ -75,14 +87,23 @@ def chunk_text(text, chunk_size=1000):
 # -----------------------------
 # INGEST PDFs
 # -----------------------------
-def ingest_pdf(file_path, topic):
+def ingest_document(file_path, topic):
     # Already indexed - checked once per file, not once per chunk
     existing = collection.get(where={"source": file_path})
     if len(existing["ids"]) > 0:
         return
 
+    text = read_document(file_path)
+
+    # Scanned forms have no text layer. Indexing them adds empty or single-character
+    # chunks that pollute retrieval, so skip them - they stay downloadable via the
+    # catalogue, they are just not searchable until someone OCRs them.
+    if len(text.strip()) < MIN_INGEST_CHARS:
+        print(f"Skipping [{topic}]: {file_path} - only {len(text.strip())} chars of text. "
+              f"Still downloadable; OCR it to make it searchable.")
+        return
+
     print(f"Ingesting [{topic}]: {file_path}")
-    text   = read_pdf(file_path)
     chunks = chunk_text(text)
 
     for chunk in chunks:
@@ -214,6 +235,87 @@ def classify_topic(question, history_messages, prior_topics=""):
 # -----------------------------
 DOCUMENTS_PATH = "./documents"
 
+INGEST_EXTENSIONS = (".pdf", ".txt", ".md")
+
+MIN_INGEST_CHARS = 200
+
+CATALOG_FILENAME = "catalog.json"
+
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+
+
+def document_url(folder, filename):
+    return f"{PUBLIC_BASE_URL}/documents/{folder}/{quote(filename)}"
+
+
+def resolve_filename(folder, filename):
+    folder_path = os.path.join(DOCUMENTS_PATH, folder)
+
+    if os.path.isfile(os.path.join(folder_path, filename)):
+        return filename
+
+    target = unicodedata.normalize("NFC", filename)
+
+    try:
+        for real in os.listdir(folder_path):
+            if unicodedata.normalize("NFC", real) == target:
+                return real
+    except FileNotFoundError:
+        pass
+
+    return None
+
+
+def load_catalog(folder):
+    path = os.path.join(DOCUMENTS_PATH, folder, CATALOG_FILENAME)
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        print(f"Warning: {path} is not valid JSON ({e}). No downloads offered for {folder}.")
+        return {}
+
+
+def build_manifest(folder):
+   
+    entries = []
+
+    for filename, meta in sorted(load_catalog(folder).items()):
+        if filename.startswith("_"):
+            continue
+
+        title = (meta or {}).get("title")
+        if not title:
+            print(f"Note: {folder}/{filename} has no title in {CATALOG_FILENAME}; "
+                  f"not offered for download.")
+            continue
+
+        real_name = resolve_filename(folder, filename)
+        if real_name is None:
+            print(f"Warning: {folder}/{CATALOG_FILENAME} lists {filename}, "
+                  f"which does not exist on disk.")
+            continue
+
+        description = (meta or {}).get("description", "")
+        entries.append(f"- {title}"
+                       + (f" - {description}" if description else "")
+                       + f"\n  Link: {document_url(folder, real_name)}")
+
+    if not entries:
+        return ""
+
+    return ("DOWNLOADABLE DOCUMENTS available for this topic.\n"
+            "When one of these is the form or reference the user actually needs, give its "
+            "title and its link, copied exactly as written here. Offer only what is relevant "
+            "to the question - do not list them all. Never invent a link, never offer a "
+            "document that is not on this list, and never claim to know the contents of a "
+            "document beyond the description given here.\n\n"
+            + "\n".join(entries))
+
+
 purge_untagged_chunks()
 
 # Each sub-folder is a topic; its name becomes the `topic` tag on every chunk inside
@@ -225,8 +327,35 @@ for label, folder in TOPIC_FOLDERS.items():
         continue
 
     for filename in sorted(os.listdir(folder_path)):
-        if filename.lower().endswith(".pdf"):
-            ingest_pdf(os.path.join(folder_path, filename), folder)
+        if filename == CATALOG_FILENAME:
+            continue
+        if filename.lower().endswith(INGEST_EXTENSIONS):
+            ingest_document(os.path.join(folder_path, filename), folder)
+
+
+
+TOPIC_MANIFESTS = {label: build_manifest(folder) for label, folder in TOPIC_FOLDERS.items()}
+
+
+# -----------------------------
+# DOCUMENT DOWNLOADS
+# -----------------------------
+@app.route("/documents/<topic>/<path:filename>", methods=["GET"])
+def get_document(topic, filename):
+   
+    if topic not in TOPIC_FOLDERS.values():
+        return jsonify({"error": "unknown topic"}), 404
+
+    real_name = resolve_filename(topic, filename)
+    if real_name is None:
+        return jsonify({"error": "document not found"}), 404
+
+    try:
+        return send_from_directory(
+            os.path.join(DOCUMENTS_PATH, topic), real_name, as_attachment=True
+        )
+    except NotFound:
+        return jsonify({"error": "document not found"}), 404
 
 
 # -----------------------------
@@ -635,7 +764,9 @@ def ask():
     )
 
     system_prompt = "\n\n".join(filter(None,
-        [SYSTEM_PROMPT] + [TOPIC_PROMPTS.get(t, "") for t in topics]
+        [SYSTEM_PROMPT]
+        + [TOPIC_PROMPTS.get(t, "") for t in topics]
+        + [TOPIC_MANIFESTS.get(t, "") for t in topics]
     ))
 
     # Cache-friendly order: [system][profile][history][context][question].

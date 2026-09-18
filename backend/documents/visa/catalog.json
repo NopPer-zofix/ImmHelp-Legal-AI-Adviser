@@ -1,0 +1,78 @@
+{
+  "_comment": "Files a user can be given a download link to. title is required - an entry with a null title is never offered. Descriptions are what the model matches against when deciding which form to hand over, so make them say what the form is FOR. Note .doc and .docx are NOT searchable (only .pdf, .txt and .md are ingested) but are still downloadable from here.",
+
+  "Visa-Application.pdf": {
+    "title": "Application for a visa for the Republic of Cyprus",
+    "description": "The entry visa application form. Family members of EU, EEA or Swiss citizens, and UK nationals covered by the EU-UK Withdrawal Agreement, skip the fields marked with an asterisk.",
+    "language": "en"
+  },
+  "Application_Process_and_Visa_Requiremets.pdf": {
+    "title": "Application process and visa requirements",
+    "description": "Overview of the steps and the documents required to apply for a visa to study in Cyprus.",
+    "language": "en"
+  },
+  "International Students Guide.pdf": {
+    "title": "International students guide",
+    "description": "General guide for international students coming to Cyprus - admission, arrival and what to arrange once here.",
+    "language": "en"
+  },
+
+  "MEDU2_20260309.docx": {
+    "title": "Form MEDU2 - Student entry permit application",
+    "description": "The main application form on the student track, for an entry permit and temporary residence as a student.",
+    "language": "en"
+  },
+  "LIST-SUPPORTING-DOCUMENTS-STUDENTS_MEDU2.docx": {
+    "title": "MEDU2 - List of supporting documents for students",
+    "description": "Checklist of every document that must accompany a MEDU2 student application.",
+    "language": "en"
+  },
+  "Έντυπο-μεταγραφής-MEDU2.doc": {
+    "title": "MEDU2 - University transfer form",
+    "description": "Form for a student transferring between institutions in Cyprus without losing their permit.",
+    "language": "el"
+  },
+
+  "MDW3_20260309_.docx": {
+    "title": "Form MDW3 - Domestic worker entry permit application",
+    "description": "The main application form on the domestic worker track, for an entry permit and temporary residence.",
+    "language": "en"
+  },
+  "ENTRY-PERMIT-REGISTRATION-TEMP-RESID-MDW3-1.doc": {
+    "title": "MDW3 - Entry permit, registration and temporary residence",
+    "description": "Entry permit registration and temporary residence form for the domestic worker track.",
+    "language": "en"
+  },
+  "Contract-Of-Employment-for-Domestic-Workers-MDW3.docx": {
+    "title": "MDW3 - Contract of employment for domestic workers",
+    "description": "The standard employment contract that must be signed by employer and domestic worker and submitted with the MDW3 application.",
+    "language": "en"
+  },
+  "RENEWAL_MDW3.doc": {
+    "title": "MDW3 - Permit renewal",
+    "description": "Renewal application for a domestic worker permit with the same employer.",
+    "language": "en"
+  },
+  "RENEWAL-DUE-TO-EMPLOYER-CHANGE_MDW3.doc": {
+    "title": "MDW3 - Renewal due to change of employer",
+    "description": "Renewal application used when a domestic worker changes employer, rather than the ordinary renewal form.",
+    "language": "en"
+  },
+  "Συμφωνία-Αποδέσμευσης-Release-Agreement.pdf": {
+    "title": "Release agreement",
+    "description": "Agreement releasing a worker from their current employer, required when changing employer.",
+    "language": "el"
+  },
+  "Υπεύθυνη-Δήλωση-Αλλοδαπού-για-καταβολή-μισθών-MDW3.docx": {
+    "title": "MDW3 - Declaration on payment of wages",
+    "description": "Responsible declaration by the foreign national regarding payment of their wages, submitted with an MDW3 application.",
+    "language": "el"
+  },
+
+  "_scanned": "Appointment-arrangiment.pdf is a scan with no text layer. It is offered as a download but is NOT searchable - nothing in it can be quoted or retrieved. OCR it if its content should be answerable from.",
+  "Appointment-arrangiment.pdf": {
+    "title": "Arranging an appointment",
+    "description": "How to arrange the appointment needed for an application.",
+    "language": "en"
+  }
+}

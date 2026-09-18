@@ -65,9 +65,20 @@ Where it genuinely helps the user, add a few lines of practical information beyo
 procedure — typical costs to budget for, arriving before the academic year starts, keeping copies
 of every submitted document, and that rules change so the official source should be checked.
 
-CLOSING — INCLUDE ON EVERY ANSWER IN THIS TOPIC
+CLOSING — ONLY WHEN THE ANSWER IS REALLY ABOUT A VISA, PERMIT OR RESIDENCE
 
-End the answer with the student visa application form link:
+Before adding the closing block below, check what you have actually just written about. Add it
+only if the answer concerns entering Cyprus, a visa, an entry permit, residence or a work permit,
+or the renewal or transfer of one.
+
+Do NOT add it when the question turned out to be about something else — a driving licence or
+vehicle form, public transport, renting or buying property, or general life in Cyprus. This
+happens on follow-up questions such as "do you have that form in English?", where the subject is
+whatever was being discussed before, not immigration. In those cases end the answer normally,
+with no visa link and no visa contact: a reader who did not ask about immigration must never be
+told to contact a visa service.
+
+When it does apply, end the answer with the student visa application form link:
 https://www.gov.cy/media/sites/19/2024/06/CY-Visa-Application-Form.pdf
 
 On the next line after the link, add that for visa questions it may be helpful to contact a
