@@ -17,6 +17,8 @@ from models import (engine, SessionLocal, Base, User, Chat, Message, ChatState,
                     get_db, close_db, init_db)
 from auth import login_required, user_payload, banned_response, is_self_or_admin
 from admin_api import admin_bp
+from analytics_api import analytics_bp
+from metrics import answering
 
 load_dotenv()
 
@@ -31,6 +33,7 @@ for _stream in (sys.stdout, sys.stderr):
 app = Flask(__name__)
 app.teardown_appcontext(close_db)
 app.register_blueprint(admin_bp)
+app.register_blueprint(analytics_bp)
 
 # OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -235,6 +238,13 @@ for label, folder in TOPIC_FOLDERS.items():
 @app.route("/ping", methods=["GET"])
 def ping():
     return jsonify({"status": "ok"})
+
+
+@app.route("/heartbeat", methods=["POST"])
+@login_required
+def heartbeat():
+    """Sent by an open, visible app tab once a minute; login_required records the activity."""
+    return jsonify({"ok": True})
 
 
 def own_chat(db, chat_id):
@@ -522,6 +532,11 @@ def get_chat_state(db, chat_id):
 @app.route("/ask", methods=["POST"])
 @login_required
 def ask():
+    with answering():   # live "answers in progress" count for the admin analytics page
+        return _ask()
+
+
+def _ask():
     db   = get_db()
     data = request.get_json()
 
@@ -594,6 +609,7 @@ def ask():
     # ROUTE THE QUESTION
     # -----------------------------------
     topics = classify_topic(question, history_messages, state.last_topics)
+    user_message.topics = ",".join(topics)   # committed below; used by the topics chart
 
     if topics == ["OUT_OF_SCOPE"]:
         # last_topics is deliberately left alone - a refusal should not become the

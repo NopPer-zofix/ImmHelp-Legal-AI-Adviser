@@ -63,9 +63,26 @@ Log out and in again in the frontend to see the admin pages. Banned users get 40
 | `POST /admin/users/<id>/ban` `{reason}`, `POST /admin/users/<id>/unban` | Ban / unban |
 | `GET`, `POST /admin/advertisers`, `PATCH /admin/advertisers/<id>` | List, add, edit advertisers |
 | `POST /admin/advertisers/<id>/status` `{status, reason, checks}` | Approve, reject, suspend, reactivate |
+| `GET /admin/analytics/users?days=30&tz=-180` | Per day: new users, total users, active users |
+| `GET /admin/analytics/topics?days=30&tz=-180` | Per day and in total: questions per router topic |
+| `GET /admin/analytics/load?hours=6` | Active sessions now and per 5 minutes, answers in progress |
+| `POST /heartbeat` | Sent by open app tabs once a minute; marks the user active |
+
+`tz` is JavaScript's `getTimezoneOffset()`, so days are grouped in the admin's local time.
+
+### Where the analytics numbers come from
+
+- **Users**: `users.created_at`. Accounts made before this column existed get the date of their
+  first message (set automatically on start).
+- **Topics**: `/ask` saves the router's labels in `messages.topics`. Questions asked before this
+  update have no topic and are shown as "no topic".
+- **Active sessions**: `user_activity` gets one row per user per minute with an authenticated
+  request or heartbeat (`metrics.py`); rows older than 14 days are removed. "Answers in progress"
+  is counted inside the server process, so with several worker processes each reports its own.
 
 Code: `models.py` (database), `auth.py` (tokens, `login_required`, `admin_required`),
-`admin_api.py` (all `/admin` routes).
+`admin_api.py` (dashboard, users, advertisers), `analytics_api.py` (charts), `metrics.py`
+(activity tracking and answers in progress).
 
 ## Prompt routing
 

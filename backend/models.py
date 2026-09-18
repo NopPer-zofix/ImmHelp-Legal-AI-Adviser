@@ -4,11 +4,13 @@ Moved out of server.py so auth.py and admin_api.py can use the models without
 importing server (which ingests PDFs on import).
 """
 import os
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from flask import g
 from sqlalchemy import (Boolean, Column, DateTime, ForeignKey, Integer, String, Text,
                         create_engine, inspect, text)
+from sqlalchemy import Index
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.sql import func
 
@@ -60,7 +62,9 @@ class User(Base):
     is_banned     = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     banned_reason = Column(String, nullable=True)
     banned_at     = Column(DateTime(timezone=True), nullable=True)
-    created_at    = Column(DateTime(timezone=True), server_default=func.now())
+    # Set in Python too: on SQLite the column added by init_db() has no database default
+    created_at    = Column(DateTime(timezone=True), server_default=func.now(),
+                           default=lambda: datetime.now(timezone.utc))
 
     # Registration notice the user accepted (see the frontend's src/lib/consent.js)
     consent_version     = Column(String(40), nullable=True)
@@ -83,6 +87,23 @@ class Message(Base):
     chat_id    = Column(Integer, ForeignKey("chats.id"), nullable=False)
     message    = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Router labels for a user question, e.g. "VISA" or "VISA,REAL_ESTATE" (analytics only).
+    # Empty for assistant replies and for questions asked before this column existed.
+    topics     = Column(String(80), nullable=True)
+
+
+class UserActivity(Base):
+    """One row per user per minute in which they made an authenticated request.
+
+    Drives "active sessions right now" and the load chart. Rows older than
+    ACTIVITY_RETENTION_DAYS are pruned by metrics.record_activity().
+    """
+    __tablename__ = "user_activity"
+
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    minute  = Column(DateTime(timezone=True), primary_key=True)
+
+    __table_args__ = (Index("ix_user_activity_minute", "minute"),)
 
 
 class ChatState(Base):
@@ -150,7 +171,24 @@ _ADDED_COLUMNS = {
     "chats": {
         "title": {"postgresql": "VARCHAR(120)", "sqlite": "VARCHAR(120)"},
     },
+    "messages": {
+        "topics": {"postgresql": "VARCHAR(80)", "sqlite": "VARCHAR(80)"},
+    },
 }
+
+# users.created_at was added after launch, so older accounts got the migration time.
+# A user can't have joined after their first message, so pull the date back to it.
+# Idempotent: only touches rows where the first message is earlier.
+_BACKFILL_JOIN_DATES = """
+    UPDATE users SET created_at = (
+        SELECT MIN(m.created_at) FROM messages m WHERE m.user_id = users.id
+    )
+    WHERE EXISTS (
+        SELECT 1 FROM messages m
+        WHERE m.user_id = users.id
+          AND (users.created_at IS NULL OR m.created_at < users.created_at)
+    )
+"""
 
 
 def init_db():
@@ -165,3 +203,7 @@ def init_db():
                 if name not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl.get(dialect, ddl['postgresql'])}"))
                     print(f"Database: added {table}.{name}")
+
+        fixed = conn.execute(text(_BACKFILL_JOIN_DATES)).rowcount
+        if fixed:
+            print(f"Database: set join date from first message for {fixed} user(s)")

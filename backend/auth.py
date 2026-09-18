@@ -12,6 +12,7 @@ from functools import wraps
 import jwt
 from flask import g, jsonify, request
 
+from metrics import record_activity
 from models import User, get_db
 
 TOKEN_LIFETIME = timedelta(days=7)
@@ -67,6 +68,7 @@ def login_required(view):
         if user.is_banned:
             return banned_response()
         g.user = user
+        record_activity(user.id)
         return view(*args, **kwargs)
     return wrapper
 

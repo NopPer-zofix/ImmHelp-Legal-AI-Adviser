@@ -22,7 +22,12 @@ with sqlite3.connect(_db) as conn:
         CREATE TABLE users (id INTEGER PRIMARY KEY, email VARCHAR UNIQUE NOT NULL,
                             password VARCHAR NOT NULL, username VARCHAR NOT NULL);
         CREATE TABLE chats (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id));
+        CREATE TABLE messages (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, chat_id INTEGER NOT NULL,
+                               message VARCHAR NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
         INSERT INTO users (email, password, username) VALUES ('old@user.cy', 'x', 'Old User');
+        INSERT INTO chats (user_id) VALUES (1);
+        INSERT INTO messages (user_id, chat_id, message, created_at)
+            VALUES (1, 1, 'An old question from January', '2026-01-15 10:00:00');
     """)
 
 os.environ["DATABASE_URL"] = "sqlite:///" + _db.replace("\\", "/")
@@ -85,6 +90,7 @@ with SessionLocal() as db:
     old = db.query(User).filter(User.email == "old@user.cy").first()
     check("existing user kept", old is not None)
     check("existing user is a regular user", old.role == "user" and old.is_banned is False)
+    check("join date taken from the first message", old.created_at.date().isoformat() == "2026-01-15")
 server.init_db()
 check("running init_db twice is fine", True)
 
@@ -138,8 +144,8 @@ with SessionLocal() as db:
 Admin = B   # role is read from the database on every request, so the old token now works as admin
 
 s = Admin.get("/admin/stats").get_json()
-# 2 questions left: the deleted chat took its question with it
-check("stats count users and questions", s["users"] == 3 and s["messages_total"] == 2 and s["messages_7d"] == 2 and s["banned_users"] == 0)
+# Old user's January question + 2 of Ann's; the deleted chat took its question with it
+check("stats count users and questions", s["users"] == 3 and s["messages_total"] == 3 and s["messages_7d"] == 2 and s["banned_users"] == 0)
 
 top = Admin.get("/admin/top-questions?days=7").get_json()
 check("top questions group case and punctuation", top[0]["count"] == 2 and "student visa" in top[0]["question"].lower())
@@ -194,6 +200,26 @@ check("reject with reason", r.status_code == 200 and r.get_json()["status_reason
 check("rejected can't jump to approved", Admin.post(f"/admin/advertisers/{aid}/status",
       json={"status": "approved", "checks": all_checks}).status_code == 400)
 check("rejected can go back to review", Admin.post(f"/admin/advertisers/{aid}/status", json={"status": "pending"}).status_code == 200)
+
+# ---------------------------------------------------------------- analytics
+print("-- analytics --")
+check("regular user can't read analytics", A.get("/admin/analytics/load").status_code == 403)
+check("heartbeat accepted", A.post("/heartbeat").status_code == 200)
+
+topics = Admin.get("/admin/analytics/topics?days=7").get_json()
+check("questions are tagged with the router topic", topics["totals"].get("VISA") == 2 and topics["labels"][0] == "VISA")
+check("topics series has one row per day", len(topics["days"]) == 7 and topics["days"][-1]["VISA"] == 2)
+
+users_ts = Admin.get("/admin/analytics/users?days=30&tz=-180").get_json()["days"]
+check("cumulative users end at the current total", users_ts[-1]["total_users"] == 3)
+check("old user counted before the window", users_ts[0]["total_users"] >= 1)
+check("today's active users include Ann and Bob", users_ts[-1]["active_users"] == 2)
+
+load = Admin.get("/admin/analytics/load?hours=6").get_json()
+check("active sessions right now", load["active_now"] == 2)
+check("no answers in progress between requests", load["answering_now"] == 0)
+check("load series covers 6 hours in 5-minute steps", load["bucket_minutes"] == 5 and len(load["series"]) >= 72)
+check("latest bucket has the active users", load["series"][-1]["active"] == 2)
 
 print()
 print("ALL PASSED" if not fails else f"{len(fails)} FAILED: {fails}")
