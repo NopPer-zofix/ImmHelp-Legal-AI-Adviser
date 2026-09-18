@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
-import { ChevronsUpDown, CreditCard, LogOut, Sparkles } from 'lucide-react';
+import { ChevronsUpDown, CreditCard, LogOut, ShieldCheck, Sparkles } from 'lucide-react';
+import { isAdmin } from '../lib/roles';
 import { useDismiss } from '../hooks/useDismiss';
 import { formatDate } from '../lib/plans';
 import UsageMeter from './UsageMeter';
@@ -55,6 +56,11 @@ export default function UserMenu({ user, subscription: sub, onUpgrade, onManage,
             )}
           </div>
 
+          {isAdmin(user) && (
+            <a role="menuitem" className="menu-link" href="#/admin" onClick={() => setOpen(false)}>
+              <ShieldCheck size={15} /> Admin dashboard
+            </a>
+          )}
           {sub.isPro && (
             <button role="menuitem" onClick={run(onManage)}>
               <CreditCard size={15} /> Manage subscription
@@ -71,7 +77,10 @@ export default function UserMenu({ user, subscription: sub, onUpgrade, onManage,
           {initials(user.username)}
         </span>
         <span className="user-text">
-          <span className="user-name">{user.username}</span>
+          <span className="user-name">
+            {user.username}
+            {isAdmin(user) && <span className="admin-tag">Admin</span>}
+          </span>
           <span className={`user-plan${sub.isPro ? ' is-pro' : ''}`}>{planLine(sub)}</span>
         </span>
         <ChevronsUpDown size={15} className="user-chevron" />

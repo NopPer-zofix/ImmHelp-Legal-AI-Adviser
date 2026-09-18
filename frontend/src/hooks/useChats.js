@@ -94,19 +94,19 @@ export function useChats(user, { onAnswer } = {}) {
   }, [activeId]);
 
   const runAsk = useCallback(
-    async (chatId, question, history) => {
+    async (chatId, question, history, model) => {
       setPendingId(chatId);
       try {
-        const { answer, topics } = await api.ask({ question, history, userId: user.id, chatId });
+        const { answer, topics } = await api.ask({ question, history, userId: user.id, chatId, model: model?.id });
         patchChat(chatId, (c) => ({
           ...c,
-          messages: [...c.messages, { role: 'assistant', content: answer, topics }],
+          messages: [...c.messages, { role: 'assistant', content: answer, topics, model: model?.name }],
         }));
         onAnswerRef.current?.();
       } catch (err) {
         patchChat(chatId, (c) => ({
           ...c,
-          messages: [...c.messages, { role: 'assistant', content: err.message, error: true, retry: { question, history } }],
+          messages: [...c.messages, { role: 'assistant', content: err.message, error: true, retry: { question, history, model } }],
         }));
       } finally {
         setPendingId(null);
@@ -117,7 +117,7 @@ export function useChats(user, { onAnswer } = {}) {
   );
 
   const send = useCallback(
-    async (text) => {
+    async (text, model) => {
       const question = text.trim();
       if (!question || pendingId) return false;
 
@@ -138,7 +138,7 @@ export function useChats(user, { onAnswer } = {}) {
       const history = previous.filter((m) => !m.error).map(({ role, content }) => ({ role, content }));
 
       patchChat(chatId, (c) => ({ ...c, messages: [...c.messages, { role: 'user', content: question }] }));
-      await runAsk(chatId, question, history);
+      await runAsk(chatId, question, history, model);
       return true;
     },
     [activeId, pendingId, user.id, patchChat, runAsk],
@@ -151,7 +151,7 @@ export function useChats(user, { onAnswer } = {}) {
       const failed = chat?.messages.at(-1);
       if (!failed?.error) return;
       patchChat(chatId, (c) => ({ ...c, messages: c.messages.slice(0, -1) }));
-      runAsk(chatId, failed.retry.question, failed.retry.history);
+      runAsk(chatId, failed.retry.question, failed.retry.history, failed.retry.model);
     },
     [pendingId, patchChat, runAsk],
   );

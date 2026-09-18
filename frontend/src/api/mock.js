@@ -1,11 +1,14 @@
 // In-memory stand-in for the Flask backend, for `npm run dev:mock`.
 // Lets you work on the UI without Postgres, Chroma or an OpenAI key.
 import { ApiError } from './http';
+import { SEED_ADVERTISERS, SEED_USERS, seedMessages } from './mockSeed';
+import { REVIEWED_FIELDS, approvalBlockers } from '../lib/advertisers';
+import { session } from '../lib/storage';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const db = {
-  users: [{ id: 1, email: 'demo@immhelp.cy', password: 'demo1234', username: 'Demo User' }],
+  users: SEED_USERS.map((u) => ({ ...u })),
   chats: [{ id: 1, user_id: 1, title: null }],
   messages: [
     { id: 1, chat_id: 1, role: 'user', content: 'What documents do I need for a student visa in Cyprus?' },
@@ -23,8 +26,33 @@ const db = {
         'Check the current list with the Civil Registry and Migration Department before you apply.',
     },
   ],
-  seq: 10,
+  seq: 1000,
 };
+db.advertisers = SEED_ADVERTISERS.map((a) => ({ ...a, created_by: 'Kostia Admin', reviewed_by: a.reviewed_at ? 'Kostia Admin' : null }));
+db.messages.forEach((m) => Object.assign(m, { user_id: 1, created_at: new Date().toISOString() }));
+db.messages.push(...seedMessages(db.seq));
+db.seq += db.messages.length;
+
+const SUSPENDED = 'This account has been suspended. Contact support if you think this is a mistake.';
+
+function assertActive(userId) {
+  if (db.users.find((u) => u.id === userId)?.is_banned) throw new ApiError(SUSPENDED, 403);
+}
+
+// Mirrors what the real server must do: look up the caller and check the role on every admin call
+function assertAdmin() {
+  const me = db.users.find((u) => u.id === session.load()?.id);
+  if (!me || me.role !== 'admin' || me.is_banned) throw new ApiError('Admin access required.', 403);
+  return me;
+}
+
+function normalise(text) {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 const ANSWERS = [
   {
@@ -69,15 +97,15 @@ const ANSWERS = [
 ];
 
 function publicUser(u) {
-  return { id: u.id, email: u.email, username: u.username };
+  return { id: u.id, email: u.email, username: u.username, role: u.role ?? 'user' };
 }
 
 export function createMockApi() {
   return {
-    async register({ email, password, username }) {
+    async register({ email, password, username, consent }) {
       await wait(500);
       if (db.users.some((u) => u.email === email)) throw new ApiError('email already registered', 409);
-      const user = { id: ++db.seq, email, password, username };
+      const user = { id: ++db.seq, email, password, username, consent, role: 'user', created_at: new Date().toISOString() };
       db.users.push(user);
       return publicUser(user);
     },
@@ -86,6 +114,7 @@ export function createMockApi() {
       await wait(500);
       const user = db.users.find((u) => u.email === email && u.password === password);
       if (!user) throw new ApiError('invalid email or password', 401);
+      if (user.is_banned) throw new ApiError(SUSPENDED, 403);
       return publicUser(user);
     },
 
@@ -101,13 +130,17 @@ export function createMockApi() {
 
     async createChat(userId) {
       await wait(200);
+      assertActive(userId);
       const chat = { id: ++db.seq, user_id: userId, title: null };
       db.chats.push(chat);
       return { ...chat };
     },
 
-    async ask({ question, chatId }) {
-      await wait(900 + Math.random() * 900);
+    async ask({ question, chatId, model, userId }) {
+      assertActive(userId);
+      // Rough feel of each model's speed
+      const base = { 'claude-opus-5': 2200, 'claude-haiku-4-5': 500, 'gpt-5': 1400 }[model] ?? 1000;
+      await wait(base + Math.random() * 600);
       if (question.trim().length < 10) {
         return {
           answer:
@@ -117,8 +150,9 @@ export function createMockApi() {
       }
       const hit = ANSWERS.find((a) => a.match.test(question));
       const answer = hit?.text ?? 'This is a mock answer. Start the Flask backend and run `npm run dev` for real replies.';
-      db.messages.push({ id: ++db.seq, chat_id: chatId, role: 'user', content: question });
-      db.messages.push({ id: ++db.seq, chat_id: chatId, role: 'assistant', content: answer });
+      const now = new Date().toISOString();
+      db.messages.push({ id: ++db.seq, chat_id: chatId, user_id: userId, role: 'user', content: question, created_at: now });
+      db.messages.push({ id: ++db.seq, chat_id: chatId, user_id: userId, role: 'assistant', content: answer, created_at: now });
       return { answer, topics: hit?.topics ?? ['GENERAL'] };
     },
 
@@ -127,6 +161,133 @@ export function createMockApi() {
       const chat = db.chats.find((c) => c.id === chatId);
       if (chat) chat.title = title;
       return { persisted: true };
+    },
+
+    async adminStats() {
+      await wait(300);
+      assertAdmin();
+      const weekAgo = Date.now() - 7 * 86_400_000;
+      const userMessages = db.messages.filter((m) => m.role === 'user');
+      const banned = db.users.filter((u) => u.is_banned).length;
+      return {
+        users: db.users.length,
+        active_users: db.users.length - banned,
+        banned_users: banned,
+        messages_7d: userMessages.filter((m) => new Date(m.created_at) > weekAgo).length,
+        messages_total: userMessages.length,
+      };
+    },
+
+    async adminTopQuestions({ days = 7, limit = 10 } = {}) {
+      await wait(350);
+      assertAdmin();
+      const since = days ? Date.now() - days * 86_400_000 : 0;
+      const groups = new Map();
+      for (const m of db.messages) {
+        if (m.role !== 'user' || new Date(m.created_at) < since) continue;
+        const key = normalise(m.content);
+        if (key.length < 10) continue;
+        const g = groups.get(key) ?? { question: m.content, count: 0 };
+        g.count += 1;
+        if (/^[A-Z]/.test(m.content) && m.content.endsWith('?')) g.question = m.content; // nicest spelling
+        groups.set(key, g);
+      }
+      return [...groups.values()].sort((a, b) => b.count - a.count).slice(0, limit);
+    },
+
+    async adminUsers() {
+      await wait(350);
+      assertAdmin();
+      return db.users.map((u) => {
+        const mine = db.messages.filter((m) => m.user_id === u.id && m.role === 'user');
+        const last = mine.reduce((max, m) => (m.created_at > max ? m.created_at : max), '') || null;
+        return {
+          ...publicUser(u),
+          created_at: u.created_at,
+          message_count: mine.length,
+          last_active_at: last,
+          is_banned: Boolean(u.is_banned),
+          banned_reason: u.banned_reason ?? null,
+          banned_at: u.banned_at ?? null,
+        };
+      });
+    },
+
+    async adminBanUser(userId, reason) {
+      await wait(400);
+      const me = assertAdmin();
+      const user = db.users.find((u) => u.id === userId);
+      if (!user) throw new ApiError('User not found.', 404);
+      if (user.id === me.id) throw new ApiError("You can't ban your own account.", 400);
+      if (user.role === 'admin') throw new ApiError('Admins can’t be banned. Remove the admin role first.', 400);
+      Object.assign(user, { is_banned: true, banned_reason: reason || null, banned_at: new Date().toISOString() });
+      return { ok: true };
+    },
+
+    async adminUnbanUser(userId) {
+      await wait(300);
+      assertAdmin();
+      const user = db.users.find((u) => u.id === userId);
+      if (!user) throw new ApiError('User not found.', 404);
+      Object.assign(user, { is_banned: false, banned_reason: null, banned_at: null });
+      return { ok: true };
+    },
+
+    async adminAdvertisers() {
+      await wait(300);
+      assertAdmin();
+      return db.advertisers.map((a) => ({ ...a })).sort((a, b) => b.created_at.localeCompare(a.created_at));
+    },
+
+    async adminCreateAdvertiser(data) {
+      await wait(400);
+      const me = assertAdmin();
+      const advertiser = {
+        ...data,
+        id: ++db.seq,
+        status: 'pending',
+        status_reason: null,
+        checks: {},
+        created_at: new Date().toISOString(),
+        created_by: me.username,
+        reviewed_at: null,
+        reviewed_by: null,
+      };
+      db.advertisers.push(advertiser);
+      return { ...advertiser };
+    },
+
+    async adminUpdateAdvertiser(id, data) {
+      await wait(350);
+      assertAdmin();
+      const a = db.advertisers.find((x) => x.id === id);
+      if (!a) throw new ApiError('Advertiser not found.', 404);
+      const needsReview = a.status === 'approved' && REVIEWED_FIELDS.some((f) => f in data && data[f] !== a[f]);
+      Object.assign(a, data);
+      if (needsReview) Object.assign(a, { status: 'pending', checks: {}, status_reason: 'Details changed after approval' });
+      return { ...a, sent_back_to_review: needsReview };
+    },
+
+    async adminSetAdvertiserStatus(id, { status, reason, checks }) {
+      await wait(350);
+      const me = assertAdmin();
+      const a = db.advertisers.find((x) => x.id === id);
+      if (!a) throw new ApiError('Advertiser not found.', 404);
+      if (checks) a.checks = { ...checks };
+      if (status === 'approved') {
+        const blockers = approvalBlockers(a);
+        if (blockers.length) throw new ApiError(blockers[0], 400);
+      }
+      if ((status === 'rejected' || status === 'suspended') && !reason?.trim()) {
+        throw new ApiError('Give a reason.', 400);
+      }
+      Object.assign(a, {
+        status,
+        status_reason: reason?.trim() || null,
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: me.username,
+      });
+      return { ...a };
     },
 
     async deleteChat(chatId) {

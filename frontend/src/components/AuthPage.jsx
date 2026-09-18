@@ -1,13 +1,17 @@
 import { useState } from 'react';
 import { api, isMock } from '../api';
+import { consentRecord } from '../lib/storage';
+import { CONSENT_VERSION } from '../lib/consent';
+import ConsentDialog from './ConsentDialog';
 
 const EMPTY = { username: '', email: '', password: '', confirm: '' };
 
-export default function AuthPage({ onAuth }) {
+export default function AuthPage({ onAuth, notice = '' }) {
   const [mode, setMode] = useState('login'); // login | register
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
 
   const isLogin = mode === 'login';
   const update = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -26,14 +30,35 @@ export default function AuthPage({ onAuth }) {
     if (!isLogin && (!username || !email || !form.password || !form.confirm)) return setError('Fill in all fields.');
     if (!isLogin && form.password !== form.confirm) return setError("Passwords don't match.");
 
-    setBusy(true);
     setError('');
+
+    // Registration continues only after the consent dialog is accepted
+    if (!isLogin) return setConsentOpen(true);
+
+    setBusy(true);
     try {
-      const user = isLogin
-        ? await api.login({ email, password: form.password })
-        : await api.register({ email, password: form.password, username });
+      onAuth(await api.login({ email, password: form.password }));
+    } catch (err) {
+      setError(capitalize(err.message));
+      setBusy(false);
+    }
+  }
+
+  async function register() {
+    setBusy(true);
+    const consent = { version: CONSENT_VERSION, accepted_at: new Date().toISOString() };
+    try {
+      const user = await api.register({
+        email: form.email.trim(),
+        password: form.password,
+        username: form.username.trim(),
+        consent,
+      });
+      consentRecord.save(user.id, consent);
       onAuth(user);
     } catch (err) {
+      // e.g. the email is already registered: back to the form so it can be fixed
+      setConsentOpen(false);
       setError(capitalize(err.message));
       setBusy(false);
     }
@@ -59,6 +84,12 @@ export default function AuthPage({ onAuth }) {
             Create account
           </button>
         </div>
+
+        {notice && !error && (
+          <p className="auth-notice" role="status">
+            {notice}
+          </p>
+        )}
 
         <form className="auth-form" onSubmit={submit} noValidate>
           {!isLogin && (
@@ -94,9 +125,13 @@ export default function AuthPage({ onAuth }) {
           )}
 
           <button className="btn btn-primary btn-block" disabled={busy}>
-            {busy ? (isLogin ? 'Logging in…' : 'Creating account…') : isLogin ? 'Log in' : 'Create account'}
+            {isLogin ? (busy ? 'Logging in…' : 'Log in') : 'Continue'}
           </button>
         </form>
+
+        {!isLogin && <p className="auth-hint">Next, you'll review and accept how ImmHelp may be used.</p>}
+
+        <ConsentDialog open={consentOpen} busy={busy} onAgree={register} onBack={() => setConsentOpen(false)} />
 
         {isMock && (
           <p className="auth-hint">

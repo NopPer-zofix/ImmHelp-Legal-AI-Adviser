@@ -68,6 +68,7 @@ export default function Message({ message, onRetry, canRetry }) {
       </div>
       <div className="msg-actions">
         <CopyButton text={message.content} />
+        {message.model && <span className="msg-model">{message.model}</span>}
         {source && <span className="msg-source">{source}</span>}
       </div>
     </div>

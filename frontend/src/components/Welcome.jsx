@@ -21,7 +21,7 @@ function greeting() {
   return 'Good evening';
 }
 
-export default function Welcome({ user, subscription, onSend, onUpgrade, busy, loading }) {
+export default function Welcome({ user, subscription, onSend, onUpgrade, picker, busy, loading }) {
   const firstName = user.username.trim().split(/\s+/)[0];
 
   return (
@@ -38,6 +38,7 @@ export default function Welcome({ user, subscription, onSend, onUpgrade, busy, l
           onSend={onSend}
           busy={busy || loading}
           autoFocus
+          picker={picker}
           placeholder="What would you like to know about moving to Cyprus?"
         />
       </ComposerGate>

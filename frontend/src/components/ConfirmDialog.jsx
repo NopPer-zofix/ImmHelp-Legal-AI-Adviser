@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-export default function ConfirmDialog({ open, title, body, confirmLabel, onConfirm, onCancel }) {
+export default function ConfirmDialog({ open, title, body, confirmLabel, onConfirm, onCancel, tone = 'danger' }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -27,7 +27,7 @@ export default function ConfirmDialog({ open, title, body, confirmLabel, onConfi
           <button className="btn btn-ghost" onClick={onCancel}>
             Cancel
           </button>
-          <button className="btn btn-danger" onClick={onConfirm} autoFocus>
+          <button className={`btn ${tone === 'danger' ? 'btn-danger' : 'btn-primary'}`} onClick={onConfirm} autoFocus>
             {confirmLabel}
           </button>
         </div>

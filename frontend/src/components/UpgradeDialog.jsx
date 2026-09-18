@@ -117,10 +117,16 @@ export default function UpgradeDialog({ open, reason, user, subscription: sub, o
         {view === 'plans' && (
           <>
             <h2 id="upgrade-title" className="upgrade-title">
-              {reason === 'limit' ? "You've reached today's free limit" : 'Upgrade to ImmHelp Pro'}
+              {reason === 'limit'
+                ? "You've reached today's free limit"
+                : reason === 'model'
+                  ? 'Opus 5 is part of Pro'
+                  : 'Upgrade to ImmHelp Pro'}
             </h2>
             <p className="upgrade-lede">
-              {reason === 'limit'
+              {reason === 'model'
+                ? 'Upgrade to use our most capable model for complex cases, with unlimited questions.'
+                : reason === 'limit'
                 ? `The free plan includes ${FREE_DAILY_LIMIT} questions a day. Pro removes the limit so you can finish your paperwork in one sitting.`
                 : 'Ask as many questions as your move needs, about visas, permits, transport and housing.'}
             </p>

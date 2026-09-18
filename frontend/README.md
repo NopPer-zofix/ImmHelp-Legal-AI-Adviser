@@ -46,6 +46,55 @@ src/
   styles.css           design tokens, light and dark themes
 ```
 
+## Admin mode
+
+Two user types: `admin` and `user` (`src/lib/roles.js`). Admins get an "Admin dashboard" item in the
+user menu and can open `#/admin`; everyone else sees a "for administrators" page there.
+
+The dashboard shows totals, the most asked questions (7 days, 30 days, all time) and the user list with
+search, a status filter, and ban / unban with a reason. Admins and your own account can't be banned.
+Banned users can't log in or ask questions; their history is kept.
+
+In mock mode log in as `admin@immhelp.cy` / `admin1234`.
+
+### Backend
+
+The admin routes live in `IMMHelpBackend/admin_api.py` (see the backend README for the list).
+Make the first admin with `python make_admin.py you@example.com` in the backend folder, then log out
+and in again. The role shown in the browser only decides which pages appear; the server checks the
+token and the role from the database on every `/admin` request.
+
+### Advertisers
+
+`#/admin/ads`: admins add advertisers, check them and decide. Stored in the `advertisers` table.
+Nothing is shown to users yet.
+
+- Statuses: pending review → approved / rejected; approved → suspended → reactivated; rejected → back to review.
+- Approval needs every review check ticked (registration, licence for law firms, estate agents and
+  insurers, website without outcome promises) and, for licensed categories, a licence number.
+- Rejecting or suspending needs a reason. Editing company, registration, category, licence or website of
+  an approved advertiser sends it back to review.
+- Each advertiser targets topics (visas, transport, housing) that match the backend router topics.
+- Categories, checks and rules: `src/lib/advertisers.js`.
+
+Ad placements and pay-per-click billing are not designed yet.
+
+## Model picker (mock-up)
+
+The composer has a model menu: Opus 5 (Pro only), Sonnet 5 (default), Haiku 4.5 and GPT-5.
+The list lives in `src/lib/models.js`; the choice is remembered per user and shown under each answer.
+The selected id is sent to `/ask` as `model`, but the current server ignores it and always uses its own
+OpenAI model. To make the choice real, route `/ask` to the matching provider SDK by that id.
+
+## Registration consent
+
+After the registration form is filled in, a dialog shows the service notice (information service, not
+legal advice, no legal responsibility). The account is created only after the user ticks the checkbox and
+clicks "Agree and create account". Text and version live in `src/lib/consent.js`.
+
+The accepted version is sent to `POST /users` as `consent`; the server stores it in
+`users.consent_version` with the time of registration.
+
 ## Paid access (mock-up)
 
 Free users get `FREE_DAILY_LIMIT` answered questions per day (10 by default). A question counts only
@@ -62,10 +111,8 @@ enforcement: clearing site data resets the counter. For real paid access, the ba
 messages in `/ask`, return 402 when the limit is reached, and store subscriptions coming from a payment
 provider's webhook (e.g. Stripe Checkout).
 
-## Known backend limitations
+## Sessions
 
-- **No rename or delete endpoints.** The frontend tries `PATCH /chats/:id` and `DELETE /chats/:id`;
-  on 404/405 it keeps the new name, or hides the chat, in this browser only. Add a `title` column and
-  those two routes and the frontend uses them automatically (it also reads `title` from `GET /chats/:user_id`).
-- **No authentication tokens.** `/login` returns the user object and later requests only pass `user_id`.
-  Anyone who can reach the API can read other users' chats. Add JWT or session cookies before deploying.
+`/login` and `/users` return a token that the client sends as `Authorization: Bearer …`.
+When the server answers 401 (token expired, 7 days) or 403 with `code: "banned"`, the app logs out
+and shows the reason on the login screen. Chat names and deletions are stored on the server.

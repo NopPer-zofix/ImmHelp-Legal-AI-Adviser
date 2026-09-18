@@ -3,7 +3,7 @@ import { ArrowUp } from 'lucide-react';
 
 const MAX_HEIGHT = 240;
 
-export default function Composer({ onSend, busy, autoFocus = true, placeholder = 'Reply to ImmHelp…' }) {
+export default function Composer({ onSend, busy, autoFocus = true, placeholder = 'Reply to ImmHelp…', picker = null }) {
   const [value, setValue] = useState('');
   const ref = useRef(null);
 
@@ -54,6 +54,7 @@ export default function Composer({ onSend, busy, autoFocus = true, placeholder =
       />
       <div className="composer-row">
         <span className="composer-hint">Shift + Enter for a new line</span>
+        {picker}
         <button className="send-btn" disabled={!canSend} aria-label="Send">
           <ArrowUp size={18} strokeWidth={2.25} />
         </button>

@@ -3,20 +3,23 @@ import { PanelLeftOpen, SquarePen } from 'lucide-react';
 import { useChats, titleOf } from '../hooks/useChats';
 import { useSubscription } from '../hooks/useSubscription';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import { useModel } from '../hooks/useModel';
 import Sidebar from './Sidebar';
 import Welcome from './Welcome';
 import Thread from './Thread';
 import Composer from './Composer';
 import ComposerGate from './ComposerGate';
+import ModelPicker from './ModelPicker';
 import UpgradeDialog from './UpgradeDialog';
 import Toast from './Toast';
 
 export default function ChatApp({ user, onLogout }) {
   const subscription = useSubscription(user);
   const chats = useChats(user, { onAnswer: subscription.recordMessage });
+  const { model, models, select: selectModel } = useModel(user, subscription.isPro);
   const isMobile = useMediaQuery('(max-width: 768px)');
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
-  const [paywall, setPaywall] = useState(null); // null | 'limit' | 'menu' | 'manage'
+  const [paywall, setPaywall] = useState(null); // null | 'limit' | 'model' | 'menu' | 'manage'
 
   useEffect(() => setSidebarOpen(!isMobile), [isMobile]);
 
@@ -35,13 +38,23 @@ export default function ChatApp({ user, onLogout }) {
         setPaywall('limit');
         return false;
       }
-      return sendMessage(text);
+      return sendMessage(text, model);
     },
-    [canSend, sendMessage],
+    [canSend, sendMessage, model],
   );
 
   const retry = () => (canSend ? retryMessage(active.id) : setPaywall('limit'));
   const openUpgrade = () => setPaywall('limit');
+
+  const picker = (
+    <ModelPicker
+      model={model}
+      models={models}
+      isPro={subscription.isPro}
+      onSelect={selectModel}
+      onLocked={() => setPaywall('model')}
+    />
+  );
 
   return (
     <div className={`app ${sidebarOpen ? 'is-sidebar-open' : 'is-sidebar-closed'}`}>
@@ -77,7 +90,7 @@ export default function ChatApp({ user, onLogout }) {
             <Thread chat={active} pending={chats.pendingId === active.id} onRetry={retry} />
             <div className="dock">
               <ComposerGate subscription={subscription} onUpgrade={openUpgrade}>
-                <Composer key={active.id} onSend={send} busy={isPending} />
+                <Composer key={active.id} onSend={send} busy={isPending} picker={picker} />
               </ComposerGate>
               <p className="disclaimer">
                 ImmHelp can make mistakes. Confirm important details with the Civil Registry and Migration Department.
@@ -91,6 +104,7 @@ export default function ChatApp({ user, onLogout }) {
             subscription={subscription}
             onSend={send}
             onUpgrade={openUpgrade}
+            picker={picker}
             busy={isPending}
             loading={chats.status === 'loading'}
           />

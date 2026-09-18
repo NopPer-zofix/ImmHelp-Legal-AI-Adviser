@@ -13,12 +13,16 @@ export const PRO_PRICE = {
 
 export const FREE_FEATURES = [
   `${FREE_DAILY_LIMIT} questions a day`,
+  'Sonnet 5, Haiku 4.5 and GPT-5',
   'Visas, transport and housing topics',
   'Chat history on every device',
+  'Includes sponsored suggestions',
 ];
 
 export const PRO_FEATURES = [
   'Unlimited questions',
+  'No ads',
+  'Access to Opus 5, the most capable model',
   'Visas, transport and housing topics',
   'Chat history on every device',
   'Priority support by email',

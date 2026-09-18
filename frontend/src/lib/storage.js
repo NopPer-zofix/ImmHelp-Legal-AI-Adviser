@@ -61,3 +61,16 @@ export function subscriptionStore(userId) {
     setUsage: (usage) => write(usageKey, usage),
   };
 }
+
+// Record of the accepted registration notice. The backend has no column for it yet,
+// so it is also sent with POST /users (ignored by the current server) for later use.
+export const consentRecord = {
+  save: (userId, record) => write(`immhelp:consent:${userId}`, record),
+  load: (userId) => read(`immhelp:consent:${userId}`, null),
+};
+
+// Last model the user picked
+export const modelPref = {
+  load: (userId) => read(`immhelp:model:${userId}`, null),
+  save: (userId, modelId) => write(`immhelp:model:${userId}`, modelId),
+};
