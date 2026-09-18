@@ -1,10 +1,12 @@
-import { ArrowLeft, LayoutDashboard, LogOut, Megaphone } from 'lucide-react';
+import { ArrowLeft, ChartLine, LayoutDashboard, LogOut, Megaphone } from 'lucide-react';
 import { navigate } from '../../hooks/useHashRoute';
 import Dashboard from './Dashboard';
 import Advertisers from './Advertisers';
+import Analytics from './Analytics';
 
 const NAV = [
   { path: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/admin/analytics', label: 'Analytics', icon: ChartLine },
   { path: '/admin/ads', label: 'Advertisers', icon: Megaphone },
 ];
 
@@ -39,6 +41,7 @@ export default function AdminApp({ user, route, onLogout }) {
 
       <main className="admin-main">
         {page.path === '/admin' && <Dashboard currentUser={user} />}
+        {page.path === '/admin/analytics' && <Analytics />}
         {page.path === '/admin/ads' && <Advertisers />}
       </main>
     </div>

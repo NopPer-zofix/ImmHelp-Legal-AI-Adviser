@@ -118,6 +118,21 @@ export function createHttpApi(baseUrl, getToken = () => null) {
 
     adminBanUser: (userId, reason) => request(`/admin/users/${userId}/ban`, { method: 'POST', body: { reason } }),
 
+    // ----- Analytics (IMMHelpBackend/analytics_api.py) -----
+    // tz = Date.getTimezoneOffset(), so days are grouped in the admin's local time
+
+    // → { days: [{ date, new_users, total_users, active_users }] }
+    adminAnalyticsUsers: ({ days, tz }) => request(`/admin/analytics/users?days=${days}&tz=${tz}`),
+
+    // → { labels, totals, questions, untagged, days: [{ date, VISA, ... }] }
+    adminAnalyticsTopics: ({ days, tz }) => request(`/admin/analytics/topics?days=${days}&tz=${tz}`),
+
+    // → { active_now, window_minutes, answering_now, questions_last_hour, bucket_minutes, series: [{ time, active }] }
+    adminAnalyticsLoad: ({ hours }) => request(`/admin/analytics/load?hours=${hours}`),
+
+    // Open, visible tabs call this once a minute so "active sessions" means people using the app
+    heartbeat: () => request('/heartbeat', { method: 'POST', body: {} }),
+
     adminUnbanUser: (userId) => request(`/admin/users/${userId}/unban`, { method: 'POST', body: {} }),
 
     // → [{ id, company, reg_number, website, category, licence_number, contact_name, contact_email,

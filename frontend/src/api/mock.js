@@ -2,6 +2,7 @@
 // Lets you work on the UI without Postgres, Chroma or an OpenAI key.
 import { ApiError } from './http';
 import { SEED_ADVERTISERS, SEED_USERS, seedMessages } from './mockSeed';
+import { mockLoad, mockTopicsSeries, mockUsersSeries } from './mockAnalytics';
 import { REVIEWED_FIELDS, approvalBlockers } from '../lib/advertisers';
 import { session } from '../lib/storage';
 
@@ -139,7 +140,7 @@ export function createMockApi() {
     async ask({ question, chatId, model, userId }) {
       assertActive(userId);
       // Rough feel of each model's speed
-      const base = { 'claude-opus-5': 2200, 'claude-haiku-4-5': 500, 'gpt-5': 1400 }[model] ?? 1000;
+      const base = { 'claude-opus-5': 2000, 'gpt-5': 1100 }[model] ?? 1000;
       await wait(base + Math.random() * 600);
       if (question.trim().length < 10) {
         return {
@@ -230,6 +231,28 @@ export function createMockApi() {
       const user = db.users.find((u) => u.id === userId);
       if (!user) throw new ApiError('User not found.', 404);
       Object.assign(user, { is_banned: false, banned_reason: null, banned_at: null });
+      return { ok: true };
+    },
+
+    async adminAnalyticsUsers(params) {
+      await wait(350);
+      assertAdmin();
+      return mockUsersSeries(params);
+    },
+
+    async adminAnalyticsTopics(params) {
+      await wait(350);
+      assertAdmin();
+      return mockTopicsSeries(params);
+    },
+
+    async adminAnalyticsLoad(params) {
+      await wait(250);
+      assertAdmin();
+      return mockLoad(params);
+    },
+
+    async heartbeat() {
       return { ok: true };
     },
 

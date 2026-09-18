@@ -64,6 +64,20 @@ Make the first admin with `python make_admin.py you@example.com` in the backend 
 and in again. The role shown in the browser only decides which pages appear; the server checks the
 token and the role from the database on every `/admin` request.
 
+### Analytics
+
+`#/admin/analytics` has three parts:
+
+- **Right now**, refreshed every 30 seconds: active sessions (users whose app was open in the last
+  2 minutes), answers being generated at this moment, questions in the last hour, and a chart of
+  active sessions over the last 6 or 24 hours.
+- **Users** for 7, 30 or 90 days: total accounts, users active each day, new sign-ups per day.
+- **Topics**: share of each router topic and a stacked chart per day.
+
+Every logged-in, visible tab sends `POST /heartbeat` once a minute (`src/hooks/useHeartbeat.js`), so
+"active sessions" counts people with the app open, not only people typing. Charts use Recharts and
+load only with the admin pages.
+
 ### Advertisers
 
 `#/admin/ads`: admins add advertisers, check them and decide. Stored in the `advertisers` table.
@@ -81,7 +95,7 @@ Ad placements and pay-per-click billing are not designed yet.
 
 ## Model picker (mock-up)
 
-The composer has a model menu: Opus 5 (Pro only), Sonnet 5 (default), Haiku 4.5 and GPT-5.
+The composer has a model menu with two options: GPT-5 (default) and Claude (Opus 5, Pro only).
 The list lives in `src/lib/models.js`; the choice is remembered per user and shown under each answer.
 The selected id is sent to `/ask` as `model`, but the current server ignores it and always uses its own
 OpenAI model. To make the choice real, route `/ask` to the matching provider SDK by that id.
