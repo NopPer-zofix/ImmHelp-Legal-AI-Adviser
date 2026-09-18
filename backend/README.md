@@ -31,6 +31,42 @@ Testing
 
 10) Invoke-WebRequest -Uri "http://localhost:5000/ask" -Method POST -Headers @{ "Content-Type" = "application/json" } -Body '{"user_id": 1, "chat_id": 1, "question": "What documents are needed for Cyprus visa?"}'
 
+## Setup
+
+    pip install -r requirements.txt
+    copy .env.example .env      # then fill in the values (Windows; cp on macOS/Linux)
+    python server.py
+
+On start the server creates missing tables and adds new columns to existing ones
+(`init_db()` in `models.py`), so an existing database upgrades itself. No manual migration.
+
+## Accounts, tokens and admins
+
+`POST /login` and `POST /users` return the user with a `role` and a `token`. Every other route
+except `/ping` needs `Authorization: Bearer <token>`. The server takes the user from the token and
+only lets them see and change their own chats; a `user_id` in the body is ignored.
+
+Make the first admin after registering in the app:
+
+    python make_admin.py you@example.com            # --remove to undo
+
+Log out and in again in the frontend to see the admin pages. Banned users get 403 with
+`"code": "banned"` on login and on every request; the ban applies immediately.
+
+| Route | What it does |
+|---|---|
+| `PATCH /chats/<id>` `{title}` | Rename your chat |
+| `DELETE /chats/<id>` | Delete your chat with its messages |
+| `GET /admin/stats` | Users, banned, questions in 7 days and in total |
+| `GET /admin/top-questions?days=7&limit=10` | Most asked questions (`days=0` = all time) |
+| `GET /admin/users` | Users with question count and last activity |
+| `POST /admin/users/<id>/ban` `{reason}`, `POST /admin/users/<id>/unban` | Ban / unban |
+| `GET`, `POST /admin/advertisers`, `PATCH /admin/advertisers/<id>` | List, add, edit advertisers |
+| `POST /admin/advertisers/<id>/status` `{status, reason, checks}` | Approve, reject, suspend, reactivate |
+
+Code: `models.py` (database), `auth.py` (tokens, `login_required`, `admin_required`),
+`admin_api.py` (all `/admin` routes).
+
 ## Prompt routing
 
 `/ask` routes each question to a topic prompt before answering, and searches only that topic's
@@ -45,6 +81,7 @@ The response now carries the routed labels so you can see what the router picked
 
     python tests/test_routing.py      # routing, prompt loading, retrieval filtering
     python tests/test_chat_flow.py    # end-to-end /ask, history and compaction
+    python tests/test_admin_api.py    # tokens, chat ownership, admin routes, bans, advertisers
     python tests/bench_compaction.py  # token-cost comparison
 
 No API key or Postgres needed — OpenAI is stubbed, Chroma uses a temp path and the

@@ -1,0 +1,8 @@
+flask
+openai
+chromadb
+python-dotenv
+sqlalchemy
+psycopg2-binary
+pypdf
+pyjwt

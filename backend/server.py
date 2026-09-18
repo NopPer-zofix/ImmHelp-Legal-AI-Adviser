@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, g
 from openai import OpenAI
 from dotenv import load_dotenv
 from pypdf import PdfReader
@@ -8,14 +8,15 @@ import os
 import re
 import sys
 import uuid
+from datetime import datetime, timezone
 
 import compaction
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
-from sqlalchemy.sql import func
+# engine, SessionLocal and Base are re-exported for the tests and scripts that use server.*
+from models import (engine, SessionLocal, Base, User, Chat, Message, ChatState,
+                    get_db, close_db, init_db)
+from auth import login_required, user_payload, banned_response, is_self_or_admin
+from admin_api import admin_bp
 
 load_dotenv()
 
@@ -27,66 +28,9 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):
         pass
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-engine = create_engine(DATABASE_URL)
-
-SessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=engine
-)
-
-Base = declarative_base()
-
-
-# -----------------------------
-# MODELS
-# -----------------------------
-class User(Base):
-    __tablename__ = "users"
-
-    id       = Column(Integer, primary_key=True, index=True)
-    email    = Column(String, unique=True, nullable=False)
-    password = Column(String, nullable=False)
-    username = Column(String, nullable=False)
-
-
-class Chat(Base):
-    __tablename__ = "chats"
-
-    id      = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-
-
-class Message(Base):
-    __tablename__ = "messages"
-
-    id         = Column(Integer, primary_key=True)
-    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False)
-    chat_id    = Column(Integer, ForeignKey("chats.id"), nullable=False)
-    message    = Column(String, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-
-class ChatState(Base):
-    """Per-chat state that is not itself a message.
-
-    `compacted_through_id` is a watermark, not a delete: every message stays in the
-    messages table for /messages, but anything at or below the watermark has been
-    folded into `profile` and is no longer re-sent to the model on each turn.
-    """
-    __tablename__ = "chat_state"
-
-    chat_id              = Column(Integer, ForeignKey("chats.id"), primary_key=True)
-    profile              = Column(String, nullable=False, default="")
-    compacted_through_id = Column(Integer, nullable=False, default=0)
-    last_topics          = Column(String, nullable=False, default="")
-    updated_at           = Column(DateTime(timezone=True), server_default=func.now(),
-                                  onupdate=func.now())
-
-
 app = Flask(__name__)
+app.teardown_appcontext(close_db)
+app.register_blueprint(admin_bp)
 
 # OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -293,12 +237,20 @@ def ping():
     return jsonify({"status": "ok"})
 
 
+def own_chat(db, chat_id):
+    """The chat if it belongs to the logged-in user (admins may read any), else None."""
+    chat = db.query(Chat).filter(Chat.id == chat_id).first()
+    if chat and is_self_or_admin(chat.user_id):
+        return chat
+    return None
+
+
 # -----------------------------
 # USER ENDPOINTS
 # -----------------------------
 @app.route("/users", methods=["POST"])
 def create_user():
-    db   = SessionLocal()
+    db   = get_db()
     data = request.get_json()
 
     if not data:
@@ -315,29 +267,35 @@ def create_user():
         return jsonify({"error": "email already registered"}), 409
 
     user = User(email=email, password=generate_password_hash(password), username=username)
+
+    # The frontend sends the version of the registration notice the user accepted
+    consent = data.get("consent")
+    if isinstance(consent, dict) and consent.get("version"):
+        user.consent_version     = str(consent["version"])[:40]
+        user.consent_accepted_at = datetime.now(timezone.utc)
+
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    return jsonify({
-        "id":       user.id,
-        "email":    user.email,
-        "username": user.username
-    }), 201
+    # Registering also logs the user in
+    return jsonify(user_payload(user)), 201
 
 
 @app.route("/users/<int:user_id>", methods=["GET"])
+@login_required
 def get_user(user_id):
-    db   = SessionLocal()
+    db   = get_db()
     user = db.query(User).filter(User.id == user_id).first()
 
-    if not user:
+    if not user or not is_self_or_admin(user_id):
         return jsonify({"error": "user not found"}), 404
 
     return jsonify({
         "id":       user.id,
         "email":    user.email,
-        "username": user.username
+        "username": user.username,
+        "role":     user.role
     })
 
 
@@ -346,7 +304,7 @@ def get_user(user_id):
 # -----------------------------
 @app.route("/login", methods=["POST"])
 def login():
-    db   = SessionLocal()
+    db   = get_db()
     data = request.get_json()
 
     if not data:
@@ -363,31 +321,22 @@ def login():
     if not user or not check_password_hash(user.password, password):
         return jsonify({"error": "invalid email or password"}), 401
 
-    return jsonify({
-        "id":       user.id,
-        "email":    user.email,
-        "username": user.username
-    })
+    if user.is_banned:
+        return banned_response()
+
+    return jsonify(user_payload(user))
 
 
 # -----------------------------
 # CHAT ENDPOINTS
 # -----------------------------
 @app.route("/chats", methods=["POST"])
+@login_required
 def create_chat():
-    db   = SessionLocal()
-    data = request.get_json()
+    db = get_db()
 
-    if not data:
-        return jsonify({"error": "invalid request"}), 400
-
-    user_id = data.get("user_id")
-
-    if not user_id:
-        return jsonify({"error": "user_id is required"}), 400
-
-    if not db.query(User).filter(User.id == user_id).first():
-        return jsonify({"error": "user not found"}), 404
+    # The chat always belongs to the caller; a user_id in the body is ignored
+    user_id = g.user.id
 
     chat = Chat(user_id=user_id)
     db.add(chat)
@@ -401,28 +350,67 @@ def create_chat():
 
 
 @app.route("/chats/<int:user_id>", methods=["GET"])
+@login_required
 def get_user_chats(user_id):
-    db = SessionLocal()
+    db = get_db()
 
-    if not db.query(User).filter(User.id == user_id).first():
+    if not is_self_or_admin(user_id) or not db.query(User).filter(User.id == user_id).first():
         return jsonify({"error": "user not found"}), 404
 
-    chats = db.query(Chat).filter(Chat.user_id == user_id).all()
+    chats = db.query(Chat).filter(Chat.user_id == user_id).order_by(Chat.id).all()
 
     return jsonify([{
         "id":      c.id,
-        "user_id": c.user_id
+        "user_id": c.user_id,
+        "title":   c.title
     } for c in chats])
+
+
+@app.route("/chats/<int:chat_id>", methods=["PATCH"])
+@login_required
+def rename_chat(chat_id):
+    db   = get_db()
+    data = request.get_json(silent=True) or {}
+    chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == g.user.id).first()
+
+    if not chat:
+        return jsonify({"error": "chat not found"}), 404
+
+    title = " ".join(str(data.get("title", "")).split())[:120]
+    if not title:
+        return jsonify({"error": "title is required"}), 400
+
+    chat.title = title
+    db.commit()
+    return jsonify({"id": chat.id, "user_id": chat.user_id, "title": chat.title})
+
+
+@app.route("/chats/<int:chat_id>", methods=["DELETE"])
+@login_required
+def delete_chat(chat_id):
+    db   = get_db()
+    chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == g.user.id).first()
+
+    if not chat:
+        return jsonify({"error": "chat not found"}), 404
+
+    # Children first: messages and chat_state reference the chat
+    db.query(Message).filter(Message.chat_id == chat_id).delete()
+    db.query(ChatState).filter(ChatState.chat_id == chat_id).delete()
+    db.delete(chat)
+    db.commit()
+    return jsonify({"deleted": chat_id})
 
 
 # -----------------------------
 # MESSAGE ENDPOINTS
 # -----------------------------
 @app.route("/messages/<int:chat_id>", methods=["GET"])
+@login_required
 def get_chat_messages(chat_id):
-    db = SessionLocal()
+    db = get_db()
 
-    if not db.query(Chat).filter(Chat.id == chat_id).first():
+    if not own_chat(db, chat_id):
         return jsonify({"error": "chat not found"}), 404
 
     messages = (
@@ -442,28 +430,27 @@ def get_chat_messages(chat_id):
 
 
 @app.route("/messages", methods=["POST"])
+@login_required
 def create_message():
-    db   = SessionLocal()
+    db   = get_db()
     data = request.get_json()
 
     if not data:
         return jsonify({"error": "invalid request"}), 400
 
-    user_id = data.get("user_id")
+    user_id = g.user.id
     chat_id = data.get("chat_id")
     message = data.get("message")
     role    = data.get("role", "assistant")
 
-    if not all([user_id, chat_id, message]):
-        return jsonify({"error": "user_id, chat_id and message are required"}), 400
+    if not all([chat_id, message]):
+        return jsonify({"error": "chat_id and message are required"}), 400
 
     if role not in ("user", "assistant"):
         return jsonify({"error": "role must be 'user' or 'assistant'"}), 400
 
-    if not db.query(User).filter(User.id == user_id).first():
-        return jsonify({"error": "user not found"}), 404
-
-    if not db.query(Chat).filter(Chat.id == chat_id).first():
+    chat = db.query(Chat).filter(Chat.id == chat_id).first()
+    if not chat or chat.user_id != user_id:
         return jsonify({"error": "chat not found"}), 404
 
     # Prefix assistant messages consistently with the existing convention
@@ -533,15 +520,16 @@ def get_chat_state(db, chat_id):
 # RAG ENDPOINT
 # -----------------------------
 @app.route("/ask", methods=["POST"])
+@login_required
 def ask():
-    db   = SessionLocal()
+    db   = get_db()
     data = request.get_json()
 
     if not data:
         return jsonify({"error": "invalid request"}), 400
 
     question = data.get("question")
-    user_id  = data.get("user_id")
+    user_id  = g.user.id          # from the token; a user_id in the body is ignored
     chat_id  = data.get("chat_id")
     history  = data.get("history", [])  # optional fallback; history is read from the DB
 
@@ -551,12 +539,9 @@ def ask():
     if len(question.strip()) < 10:
         return jsonify({"answer": "Your request is too short for me to properly answer it. Please describe your immigration or study-in-Cyprus question in more detail."})
 
-    # Validate user
-    if not db.query(User).filter(User.id == user_id).first():
-        return jsonify({"error": "user not found"}), 404
-
-    # Validate chat
-    if not db.query(Chat).filter(Chat.id == chat_id).first():
+    # Validate chat: it must exist and belong to the caller
+    chat = db.query(Chat).filter(Chat.id == chat_id).first()
+    if not chat or chat.user_id != user_id:
         return jsonify({"error": "chat not found"}), 404
 
     # Save message to PostgreSQL
@@ -678,5 +663,5 @@ def ask():
 
 
 if __name__ == "__main__":
-    Base.metadata.create_all(bind=engine)
-    app.run(debug=True)
+    init_db()   # creates tables and adds any new columns to existing ones
+    app.run(debug=os.getenv("FLASK_DEBUG") == "1")

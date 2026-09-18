@@ -56,7 +56,7 @@ chromadb.PersistentClient = lambda path=None, **kw: _real(path=_tmp, **kw)
 import server
 import compaction
 
-server.Base.metadata.create_all(bind=server.engine)
+server.init_db()
 app = server.app.test_client()
 
 fails = []
@@ -71,6 +71,8 @@ def check(name, cond, detail=""):
 # ---------------------------------------------------------------- setup
 r = app.post("/users", json={"email": "a@b.c", "password": "pw", "username": "tester"})
 uid = r.get_json()["id"]
+# Every route except /users, /login and /ping needs the token from registration
+app.environ_base["HTTP_AUTHORIZATION"] = "Bearer " + r.get_json()["token"]
 cid = app.post("/chats", json={"user_id": uid}).get_json()["id"]
 
 QUESTIONS = [
