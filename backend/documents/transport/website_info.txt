@@ -1,0 +1,32 @@
+REFERENCE LINKS - TRANSPORT (Republic of Cyprus)
+
+These are external web pages on Cyprus driving and vehicle rules. They are LINKS, not content:
+the page text has not been read into this knowledge base. Point the user to the relevant link
+when their question matches one of the topics below, and do not state what a page says as if it
+had been read. Anything presented as fact must come from the official forms and guides in this
+folder or be flagged to the user as something to confirm.
+
+HOW TO ADD AN ENTRY: one block per page - a "Title : URL" line, then a "Covers:" line listing the
+terms someone would actually search for. The Covers line is what makes the entry findable, so
+write the words a user would use, not the words on the page.
+
+---
+
+Cyprus Common Traffic Offences and Penalties : https://cyprusdriving.net/police-enforcement-and-common-traffic-laws-can-be-found-in-this-section-of-the-website/cyprus-traffic-offences-and-penalties/
+Covers: traffic fines, penalty points, speeding, seat belts, mobile phone while driving,
+drink driving and the alcohol limit, police enforcement, what a ticket costs, how penalties
+are applied.
+
+CPC - Cyprus Professional Driving Licence : https://cyprusdriving.net/driving-licences/cpc-cyprus-professional-driving-licence/
+Covers: Certificate of Professional Competence, professional and commercial driving, driving a
+bus, coach, lorry or truck for a living, HGV and PSV categories, periodic training required to
+keep a professional licence.
+
+What you need to know about Road Tax in Cyprus (Circulation Licence) : https://cyprusdriving.net/the-documents-and-other-vehicle-requirements-can-be-found-in-this-section-of-the-website/road-tax-circulation-licence/
+Covers: road tax, circulation licence, vehicle tax renewal, where and how to pay, what is
+needed before a vehicle can be taxed, penalties for driving untaxed.
+
+Rules for Minor Road Traffic Collisions : https://cyprusdriving.net/cyprus-introduces-new-rules-for-minor-road-traffic-collisions/
+Covers: what to do after a minor accident or a bump, when police must be called and when
+drivers may exchange details and move the vehicles, accident reporting, insurance claim after
+a small collision.

@@ -57,6 +57,13 @@ ROUTING RULES:
 3. Use the conversation history to resolve follow-ups. If the user just says "and how much does
    it cost?" or "what about renewal?", route to the topic of the previous exchange.
 
+   This matters most for questions about paperwork. Words like "form", "document", "application",
+   "in English", "where do I send it" belong to whatever was already being discussed - they are
+   NOT signals for VISA on their own. In a conversation about driving licences, "do you have that
+   form in English?" is TRANSPORT. In one about renting, "what do I sign?" is REAL_ESTATE. Only
+   switch topic when the user clearly raises a new subject, not when they ask a further question
+   about the same one.
+
 4. If the message is in scope but too vague to place in one topic, return GENERAL. Do not guess
    a specific topic just to avoid GENERAL.
 
@@ -78,6 +85,12 @@ EXAMPLES:
 "I am not an EU citizen, can I buy an apartment in Paphos?"          -> REAL_ESTATE
 "What taxes do I pay when I sell my house?"                          -> REAL_ESTATE
 "I am moving to Cyprus next year, where do I start?"                 -> GENERAL
+
+Follow-ups, where the previous turn's topic decides:
+after a driving-licence exchange, "do you have that form in English?"  -> TRANSPORT
+after a driving-licence exchange, "repeat everything again"            -> TRANSPORT
+after a tenancy exchange, "what exactly do I sign?"                    -> REAL_ESTATE
+after a student-permit exchange, "and where do I submit it?"           -> VISA
 "How do I open a bank account as a student?"                         -> GENERAL
 "Is my tenancy agreement enough to prove address for my permit?"     -> VISA,REAL_ESTATE
 "Write me a Python script"                                           -> OUT_OF_SCOPE
