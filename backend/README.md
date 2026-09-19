@@ -31,6 +31,8 @@ Testing
 
 10) Invoke-WebRequest -Uri "http://localhost:5000/ask" -Method POST -Headers @{ "Content-Type" = "application/json" } -Body '{"user_id": 1, "chat_id": 1, "question": "What documents are needed for Cyprus visa?"}'
 
+11) команда для гойды docker compose exec backend python make_admin.py ваша@почта
+
 ## Setup
 
     pip install -r requirements.txt

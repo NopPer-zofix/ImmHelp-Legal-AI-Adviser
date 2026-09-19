@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.vscode
+__pycache__
+*.pyc
+.venv
+venv
+chroma_db
+*.db
+tests
+Dockerfile
+.dockerignore
