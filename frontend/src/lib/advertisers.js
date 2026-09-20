@@ -19,6 +19,16 @@ export const AD_CATEGORIES = [
 
 export const findCategory = (id) => AD_CATEGORIES.find((c) => c.id === id) ?? AD_CATEGORIES.at(-1);
 
+// Advertiser websites are shown by host, both in the admin table and in the
+// sponsored slot under an answer. Unparseable values are shown as stored.
+export const hostOf = (url) => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+};
+
 export const AD_STATUSES = [
   { id: 'pending', label: 'Pending review' },
   { id: 'approved', label: 'Approved' },

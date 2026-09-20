@@ -16,7 +16,7 @@ import Toast from './Toast';
 export default function ChatApp({ user, onLogout }) {
   const subscription = useSubscription(user);
   const chats = useChats(user, { onAnswer: subscription.recordMessage });
-  const { model, models, select: selectModel } = useModel(user, subscription.isPro);
+  const { model, models, select: selectModel } = useModel(user, subscription.unlimited);
   const isMobile = useMediaQuery('(max-width: 768px)');
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   const [paywall, setPaywall] = useState(null); // null | 'limit' | 'model' | 'menu' | 'manage'
@@ -50,7 +50,7 @@ export default function ChatApp({ user, onLogout }) {
     <ModelPicker
       model={model}
       models={models}
-      isPro={subscription.isPro}
+      unlocked={subscription.unlimited}
       onSelect={selectModel}
       onLocked={() => setPaywall('model')}
     />

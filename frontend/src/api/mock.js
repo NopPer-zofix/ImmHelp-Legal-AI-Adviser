@@ -34,6 +34,25 @@ db.messages.forEach((m) => Object.assign(m, { user_id: 1, created_at: new Date()
 db.messages.push(...seedMessages(db.seq));
 db.seq += db.messages.length;
 
+function pickAdvertisement(topics) {
+  const wanted = new Set((topics ?? []).filter(Boolean).map((t) => t.trim().toUpperCase()));
+  if (!wanted.size) return null;
+
+  const matching = db.advertisers.filter(
+    (a) => a.status === 'approved' && (a.topics ?? []).some((t) => wanted.has(t.trim().toUpperCase())),
+  );
+  if (!matching.length) return null;
+
+  const chosen = matching[Math.floor(Math.random() * matching.length)];
+  return {
+    label: 'Sponsored',
+    id: chosen.id,
+    company: chosen.company,
+    website: chosen.website,
+    category: chosen.category,
+  };
+}
+
 const SUSPENDED = 'This account has been suspended. Contact support if you think this is a mistake.';
 
 function assertActive(userId) {
@@ -147,6 +166,7 @@ export function createMockApi() {
           answer:
             'Your request is too short for me to properly answer it. Please describe your immigration or study-in-Cyprus question in more detail.',
           topics: [],
+          advertisement: null,
         };
       }
       const hit = ANSWERS.find((a) => a.match.test(question));
@@ -154,7 +174,8 @@ export function createMockApi() {
       const now = new Date().toISOString();
       db.messages.push({ id: ++db.seq, chat_id: chatId, user_id: userId, role: 'user', content: question, created_at: now });
       db.messages.push({ id: ++db.seq, chat_id: chatId, user_id: userId, role: 'assistant', content: answer, created_at: now });
-      return { answer, topics: hit?.topics ?? ['GENERAL'] };
+      const topics = hit?.topics ?? ['GENERAL'];
+      return { answer, topics, advertisement: pickAdvertisement(topics) };
     },
 
     async renameChat(chatId, title) {

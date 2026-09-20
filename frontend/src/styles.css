@@ -785,6 +785,60 @@ code {
   font-size: 12.5px;
 }
 
+/* Sponsored slot: visibly separate from the answer, quieter than it, and
+   never styled like the guidance above it. */
+.sponsored {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+}
+
+.sponsored-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.sponsored-body {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-right: auto;
+}
+
+.sponsored-company {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sponsored-category {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.sponsored-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.sponsored-link:hover {
+  text-decoration: underline;
+}
+
 .msg--error {
   display: flex;
   align-items: center;

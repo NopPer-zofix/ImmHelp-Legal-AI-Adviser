@@ -1,19 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { api } from '../../api';
-import { AD_STATUSES, AD_TOPICS, findCategory, statusLabel } from '../../lib/advertisers';
+import { AD_STATUSES, AD_TOPICS, findCategory, hostOf, statusLabel } from '../../lib/advertisers';
 import { shortDate } from '../../lib/format';
 import AdvertiserDrawer from './AdvertiserDrawer';
 
 const TABS = [{ id: 'all', label: 'All' }, ...AD_STATUSES];
-
-const hostOf = (url) => {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-};
 
 export default function Advertisers() {
   const [list, setList] = useState(null);

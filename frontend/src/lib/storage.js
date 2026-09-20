@@ -48,6 +48,34 @@ export function chatPrefs(userId) {
   };
 }
 
+// Sponsored slots served with an answer. The backend returns them from /ask but
+// deliberately keeps them out of the stored transcript (see select_advertisement in
+// server.py), and /messages/<chat> therefore returns none - so without this the slot
+// vanished from an answer as soon as the chat was reloaded or switched away from.
+//
+// Keyed by the answer's position in the chat rather than by message id, because a
+// freshly answered message has no id until it comes back from the server.
+export function adStore(userId) {
+  const key = `immhelp:ads:${userId}`;
+
+  return {
+    // → { [answerIndex]: ad }
+    forChat: (chatId) => read(key, {})[chatId] ?? {},
+    remember(chatId, answerIndex, ad) {
+      if (!ad) return;
+      const all = read(key, {});
+      all[chatId] = { ...(all[chatId] ?? {}), [answerIndex]: ad };
+      write(key, all);
+    },
+    forget(chatId) {
+      const all = read(key, {});
+      if (!(chatId in all)) return;
+      delete all[chatId];
+      write(key, all);
+    },
+  };
+}
+
 // Paid-access mock-up: the plan and today's message count live in the browser.
 // Replace with a backend /subscription endpoint before taking real payments.
 export function subscriptionStore(userId) {

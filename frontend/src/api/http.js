@@ -90,7 +90,12 @@ export function createHttpApi(baseUrl, getToken = () => null) {
         body: { question, history, user_id: userId, chat_id: chatId, model },
         timeout: 90000,
       });
-      return { answer: data?.answer ?? 'The server returned an empty answer.', topics: data?.topics ?? [] };
+      
+      return {
+        answer: data?.answer ?? 'The server returned an empty answer.',
+        topics: data?.topics ?? [],
+        advertisement: data?.advertisement ?? null,
+      };
     },
 
     // The backend has no rename/delete endpoints yet. These try them and report

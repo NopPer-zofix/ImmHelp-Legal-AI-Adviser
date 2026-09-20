@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { subscriptionStore } from '../lib/storage';
 import { FREE_DAILY_LIMIT } from '../lib/plans';
+import { isAdmin } from '../lib/roles';
 
 function todayKey(date = new Date()) {
   const pad = (n) => String(n).padStart(2, '0');
@@ -25,6 +26,13 @@ function untilMidnight() {
 
 // Free users get FREE_DAILY_LIMIT answered questions per calendar day.
 // A question counts only once the backend answers it, so failed requests are free.
+//
+// Admins are exempt: they need to test and moderate the assistant, so the daily
+// limit would only get in the way. `unlimited` covers both routes to no limit -
+// a paid plan and the admin role - while `isPro` stays what it says, an actual
+// subscription. Anything that shows or manages the plan should keep using isPro.
+// The client-side check is convenience only; the daily limit, if it ever has to
+// be enforced, belongs on the backend alongside the role check.
 export function useSubscription(user) {
   const store = useMemo(() => subscriptionStore(user.id), [user.id]);
   const [plan, setPlanState] = useState(() => store.plan());
@@ -41,9 +49,12 @@ export function useSubscription(user) {
   const isPro =
     plan?.status === 'active' || (plan?.status === 'cancelled' && new Date(plan.endsAt) > now);
 
+  const admin = isAdmin(user);
+  const unlimited = isPro || admin;
+
   const used = usage.day === todayKey(now) ? usage.count : 0;
   const limit = FREE_DAILY_LIMIT;
-  const remaining = isPro ? Infinity : Math.max(0, limit - used);
+  const remaining = unlimited ? Infinity : Math.max(0, limit - used);
 
   const setPlan = useCallback(
     (next) => {
@@ -54,13 +65,14 @@ export function useSubscription(user) {
   );
 
   const recordMessage = useCallback(() => {
+    if (unlimited) return; // nothing counts against a limit that doesn't apply
     setUsage((current) => {
       const day = todayKey();
       const next = { day, count: (current.day === day ? current.count : 0) + 1 };
       store.setUsage(next);
       return next;
     });
-  }, [store]);
+  }, [store, unlimited]);
 
   const subscribe = useCallback(
     ({ interval, cardLast4 }) => {
@@ -82,10 +94,12 @@ export function useSubscription(user) {
   return {
     plan: isPro ? plan : null,
     isPro,
+    isAdmin: admin,
+    unlimited,
     used,
     limit,
     remaining,
-    canSend: isPro || remaining > 0,
+    canSend: unlimited || remaining > 0,
     resetsIn: untilMidnight(),
     recordMessage,
     subscribe,

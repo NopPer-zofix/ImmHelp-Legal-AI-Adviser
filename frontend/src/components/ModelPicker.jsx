@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Check, ChevronDown, Lock } from 'lucide-react';
 import { useDismiss } from '../hooks/useDismiss';
 
-export default function ModelPicker({ model, models, isPro, onSelect, onLocked }) {
+export default function ModelPicker({ model, models, unlocked, onSelect, onLocked }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const close = useCallback(() => setOpen(false), []);
@@ -10,7 +10,7 @@ export default function ModelPicker({ model, models, isPro, onSelect, onLocked }
 
   const choose = (m) => {
     setOpen(false);
-    if (m.pro && !isPro) onLocked();
+    if (m.pro && !unlocked) onLocked();
     else onSelect(m.id);
   };
 
@@ -32,7 +32,7 @@ export default function ModelPicker({ model, models, isPro, onSelect, onLocked }
       {open && (
         <div className="menu model-menu" role="listbox" aria-label="Choose a model">
           {models.map((m) => {
-            const locked = m.pro && !isPro;
+            const locked = m.pro && !unlocked;
             const selected = m.id === model.id;
             return (
               <button

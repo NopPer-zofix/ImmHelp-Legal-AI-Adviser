@@ -3,7 +3,7 @@ import { LOW_MESSAGES_WARNING } from '../lib/plans';
 
 // Wraps the composer: warns when free messages run low and replaces it once they run out.
 export default function ComposerGate({ subscription, onUpgrade, children }) {
-  const { isPro, canSend, remaining, limit, resetsIn } = subscription;
+  const { unlimited, canSend, remaining, limit, resetsIn } = subscription;
 
   if (!canSend) {
     return (
@@ -24,7 +24,7 @@ export default function ComposerGate({ subscription, onUpgrade, children }) {
 
   return (
     <>
-      {!isPro && remaining <= LOW_MESSAGES_WARNING && (
+      {!unlimited && remaining <= LOW_MESSAGES_WARNING && (
         <p className="usage-note">
           {remaining === 1 ? '1 free message' : `${remaining} free messages`} left today.{' '}
           <button className="link-btn" onClick={onUpgrade}>

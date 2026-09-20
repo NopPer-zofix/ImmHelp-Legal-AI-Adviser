@@ -12,6 +12,8 @@ function initials(name = '') {
 
 function planLine(sub) {
   if (sub.isPro) return 'Pro plan';
+  // An admin has no daily limit, so there is no count to show and nothing to upgrade
+  if (sub.isAdmin) return 'Admin, unlimited';
   if (!sub.canSend) return 'Free plan, limit reached';
   return `Free plan, ${sub.remaining} left today`;
 }
@@ -35,7 +37,7 @@ export default function UserMenu({ user, subscription: sub, onUpgrade, onManage,
 
           <div className="plan-panel">
             <div className="plan-panel-head">
-              <span className="plan-name">{sub.isPro ? 'ImmHelp Pro' : 'Free plan'}</span>
+              <span className="plan-name">{sub.isPro ? 'ImmHelp Pro' : sub.isAdmin ? 'Admin access' : 'Free plan'}</span>
               {sub.isPro && <span className="plan-badge">Pro</span>}
             </div>
 
@@ -45,6 +47,8 @@ export default function UserMenu({ user, subscription: sub, onUpgrade, onManage,
                   ? `Ends on ${formatDate(sub.plan.endsAt)}`
                   : `Unlimited questions. Renews on ${formatDate(sub.plan.renewsAt)}.`}
               </p>
+            ) : sub.isAdmin ? (
+              <p className="plan-meta">Unlimited questions and every model, as an admin.</p>
             ) : (
               <>
                 <UsageMeter used={sub.used} limit={sub.limit} />

@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Check, Copy, RotateCcw } from 'lucide-react';
 import { describeTopics } from '../lib/topics';
+import Sponsored from './Sponsored';
 
 const markdownComponents = {
   a: ({ node, ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
@@ -71,6 +72,7 @@ export default function Message({ message, onRetry, canRetry }) {
         {message.model && <span className="msg-model">{message.model}</span>}
         {source && <span className="msg-source">{source}</span>}
       </div>
+      <Sponsored ad={message.advertisement} />
     </div>
   );
 }

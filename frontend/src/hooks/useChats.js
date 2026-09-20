@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import { chatPrefs } from '../lib/storage';
+import { adStore, chatPrefs } from '../lib/storage';
 
 // The old Streamlit app saved this greeting as the first message of every chat.
 // The new welcome screen replaces it, so it is hidden when old chats load.
@@ -11,6 +11,17 @@ function deriveTitle(messages) {
   if (!first) return 'New chat';
   const text = first.content.replace(/\s+/g, ' ').trim();
   return text.length > 48 ? `${text.slice(0, 47).trimEnd()}…` : text;
+}
+
+// An answer's sponsored slot is remembered by its position among the chat's answers,
+// so it can be put back on the same message when the transcript is loaded again.
+// Failed answers are skipped: they are never stored server-side, so counting them
+// would shift every later slot onto the wrong message.
+const isAnswer = (m) => m.role === 'assistant' && !m.error;
+
+function attachAds(messages, saved) {
+  let answerIndex = 0;
+  return messages.map((m) => (isAnswer(m) ? { ...m, advertisement: saved[answerIndex++] ?? null } : m));
 }
 
 export function titleOf(chat) {
@@ -28,6 +39,7 @@ export function useChats(user, { onAnswer } = {}) {
   onAnswerRef.current = onAnswer;
 
   const prefs = useMemo(() => chatPrefs(user.id), [user.id]);
+  const ads = useMemo(() => adStore(user.id), [user.id]);
 
   const [chats, setChats] = useState([]);
   const [status, setStatus] = useState('loading'); // loading | ready | error
@@ -70,7 +82,7 @@ export function useChats(user, { onAnswer } = {}) {
           } catch {
             /* show the chat empty rather than failing the whole list */
           }
-          return { id: c.id, customTitle: c.title || prefs.title(c.id), messages };
+          return { id: c.id, customTitle: c.title || prefs.title(c.id), messages: attachAds(messages, ads.forChat(c.id)) };
         }),
       );
 
@@ -81,7 +93,7 @@ export function useChats(user, { onAnswer } = {}) {
       setLoadError(err.message);
       setStatus('error');
     }
-  }, [user.id, prefs]);
+  }, [user.id, prefs, ads]);
 
   useEffect(() => {
     load();
@@ -97,10 +109,18 @@ export function useChats(user, { onAnswer } = {}) {
     async (chatId, question, history, model) => {
       setPendingId(chatId);
       try {
-        const { answer, topics } = await api.ask({ question, history, userId: user.id, chatId, model: model?.id });
+        const { answer, topics, advertisement } = await api.ask({ question, history, userId: user.id, chatId, model: model?.id });
+
+        // Remembered before the message is appended, so the index it is filed under
+        // matches the one attachAds will look it up by on the next load.
+        const answerIndex = chatsRef.current.find((c) => c.id === chatId)?.messages.filter(isAnswer).length ?? 0;
+        ads.remember(chatId, answerIndex, advertisement);
+
+        // The ad is kept on the message but never inside `content`: history is
+        // rebuilt from `content`, so a stored ad would be fed back to the model.
         patchChat(chatId, (c) => ({
           ...c,
-          messages: [...c.messages, { role: 'assistant', content: answer, topics, model: model?.name }],
+          messages: [...c.messages, { role: 'assistant', content: answer, topics, advertisement, model: model?.name }],
         }));
         onAnswerRef.current?.();
       } catch (err) {
@@ -113,7 +133,7 @@ export function useChats(user, { onAnswer } = {}) {
         moveToTop(chatId);
       }
     },
-    [user.id, patchChat, moveToTop],
+    [user.id, patchChat, moveToTop, ads],
   );
 
   const send = useCallback(
@@ -176,13 +196,14 @@ export function useChats(user, { onAnswer } = {}) {
       try {
         const { persisted } = await api.deleteChat(chatId);
         if (!persisted) prefs.hide(chatId);
+        ads.forget(chatId);
         setChats((list) => list.filter((c) => c.id !== chatId));
         setActiveId((current) => (current === chatId ? null : current));
       } catch (err) {
         setNotice(`Couldn't delete the chat. ${err.message}`);
       }
     },
-    [prefs],
+    [prefs, ads],
   );
 
   const clearNotice = useCallback(() => setNotice(''), []);
