@@ -8,6 +8,7 @@ from urllib.parse import quote
 import chromadb
 import json
 import os
+import random
 import re
 import sys
 import unicodedata
@@ -18,7 +19,7 @@ import compaction
 
 # engine, SessionLocal and Base are re-exported for the tests and scripts that use server.*
 from models import (engine, SessionLocal, Base, User, Chat, Message, ChatState,
-                    get_db, close_db, init_db)
+                    Advertiser, get_db, close_db, init_db)
 from auth import login_required, user_payload, banned_response, is_self_or_admin
 from admin_api import admin_bp
 from analytics_api import analytics_bp
@@ -163,6 +164,7 @@ TOPIC_PROMPTS = {
     "VISA":        load_prompt("system_prompt_visa.txt"),
     "TRANSPORT":   load_prompt("system_prompt_transport.txt"),
     "REAL_ESTATE": load_prompt("system_prompt_realestate.txt"),
+    "LAW":         load_prompt("system_prompt_law.txt"),
     "GENERAL":     "",
 }
 
@@ -171,8 +173,14 @@ TOPIC_FOLDERS = {
     "VISA":        "visa",
     "TRANSPORT":   "transport",
     "REAL_ESTATE": "real_estate",
+    "LAW":         "law",
     "GENERAL":     "general",
 }
+
+TOPIC_EXTRA_FOLDERS = {
+    "REAL_ESTATE": ("law",),
+}
+
 
 OUT_OF_SCOPE_ANSWER = (
     "Your request is not clear, I am an AI which is trained for immigration help answers. "
@@ -656,6 +664,52 @@ def get_chat_state(db, chat_id):
 
 
 # -----------------------------
+# SPONSORED SLOT
+# -----------------------------
+# Filled server-side, never by the model. Three reasons: the model would invent
+# company names and links, placement has to be deterministic to be auditable for
+# billing, and paid placement inside legal guidance must stay visibly separate
+# from the advice.
+#
+# The ad is returned as its own field and is deliberately NOT written into the
+# stored message. Anything saved into the transcript comes back as history on the
+# next turn, and the model starts imitating it.
+AD_LABEL = "Sponsored"
+
+
+def select_advertisement(db, topics):
+    """One approved advertiser whose topics overlap the routed topics, or None.
+
+    Never raises: an advertising slot must not be able to break an answer.
+    """
+    wanted = {t.strip().upper() for t in topics if t}
+    if not wanted:
+        return None
+
+    try:
+        candidates = db.query(Advertiser).filter(Advertiser.status == "approved").all()
+    except Exception as e:
+        print(f"Advertiser lookup failed ({e}); serving no ad.")
+        return None
+
+    matching = [
+        a for a in candidates
+        if wanted & {t.strip().upper() for t in (a.topics or "").split(",") if t.strip()}
+    ]
+    if not matching:
+        return None
+
+    chosen = random.choice(matching)
+    return {
+        "label":    AD_LABEL,
+        "id":       chosen.id,
+        "company":  chosen.company,
+        "website":  chosen.website,
+        "category": chosen.category,
+    }
+
+
+# -----------------------------
 # RAG ENDPOINT
 # -----------------------------
 @app.route("/ask", methods=["POST"])
@@ -759,8 +813,12 @@ def _ask():
     # -----------------------------------
     question_embedding = create_embedding(question)
 
-    # "general" is always searched alongside the routed folders as a fallback
-    folders = sorted({TOPIC_FOLDERS[t] for t in topics} | {"general"})
+    # "general" is always searched alongside the routed folders as a fallback,
+    # plus any cross-topic folders the routed topics borrow from.
+    folders = {TOPIC_FOLDERS[t] for t in topics} | {"general"}
+    for t in topics:
+        folders.update(TOPIC_EXTRA_FOLDERS.get(t, ()))
+    folders = sorted(folders)
 
     results = collection.query(
         query_embeddings=[question_embedding],
@@ -806,7 +864,13 @@ def _ask():
     db.add(Message(user_id=user_id, chat_id=chat_id, message=f"[assistant] {answer}"))
     db.commit()
 
-    return jsonify({"answer": answer, "topics": topics})
+    # The sponsored slot rides alongside the answer, not inside it - see
+    # select_advertisement. A refusal (OUT_OF_SCOPE, above) carries no ad.
+    return jsonify({
+        "answer":        answer,
+        "topics":        topics,
+        "advertisement": select_advertisement(db, topics),
+    })
 
 
 if __name__ == "__main__":

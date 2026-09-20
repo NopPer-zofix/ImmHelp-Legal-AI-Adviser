@@ -21,7 +21,8 @@ live in `server.py` as module-level globals — no app factory, no ORM migration
 | Fix a mis-routed question | `sys_prompt_orchestrator.txt` — add an example, don't add Python |
 | Add source documents | drop a `.pdf`, `.txt` or `.md` into `documents/<topic>/`, restart |
 | Make a form downloadable | add an entry to `documents/<topic>/catalog.json`, restart |
-| Change how downloads are offered | the manifest text in `build_manifest()` [server.py:296](server.py#L296) |
+| Change how downloads are offered | the manifest text in `build_manifest()` [server.py:292](server.py#L292) |
+| Change how the sponsored slot is picked | `select_advertisement()` [server.py:680](server.py#L680) |
 | Add a whole new topic | 5 coordinated edits — see *Adding a topic* below |
 | Tune long-chat cost | `compaction.py` water marks, [compaction.py:37-40](compaction.py#L37-L40) |
 | Change the model | [server.py:207](server.py#L207) (router), [server.py:808](server.py#L808) (answer), [compaction.py:42](compaction.py#L42) (profile) |
@@ -35,7 +36,7 @@ live in `server.py` as module-level globals — no app factory, no ORM migration
 POST /ask
 {"user_id": 1, "chat_id": 1, "question": "...", "history": []}   # history optional, see below
 ->
-{"answer": "...", "topics": ["VISA"]}
+{"answer": "...", "topics": ["VISA"], "advertisement": {...} | null}
 ```
 
 `history` is a **fallback only** — real history is read from Postgres by `chat_id`. It is used
@@ -61,19 +62,52 @@ part of the RAG path.
 | 8 | Store `last_topics` | [server.py:763](server.py#L763) |
 | 9 | **Embedding call**, then Chroma query filtered by topic | [server.py:769-779](server.py#L769-L779) |
 | 10 | Assemble `[system + topic prompt + download manifest][profile][history][context][question]` | [server.py:800](server.py#L800) |
-| 11 | **Answer call**, save reply with `[assistant] ` prefix, return | [server.py:807-818](server.py#L807-L818) |
+| 11 | **Answer call**, save reply with `[assistant] ` prefix | [server.py:856-864](server.py#L856-L864) |
+| 12 | Pick the sponsored slot for the routed topics, return it beside the answer | [server.py:680](server.py#L680) |
 
 **Three model calls per turn** normally (router, embedding, answer), plus one extra on a
 compaction turn. Only one on an `OUT_OF_SCOPE` turn.
 
 ---
 
+## Sponsored slot
+
+`select_advertisement()` ([server.py:680](server.py#L680)) returns one approved `Advertiser`
+whose `topics` overlap the routed labels, chosen at random, or `None`. It rides in the response
+as `advertisement`, alongside `answer` — the model never sees it and never writes it.
+
+```json
+{"label": "Sponsored", "id": 7, "company": "...", "website": "...", "category": "law_firm"}
+```
+
+Three rules, each with a reason to keep it that way:
+
+- **Server-side, not model-written.** The model would invent company names and links, and billing
+  needs placement to be deterministic enough to audit.
+- **Not written into the stored message.** Anything saved to the transcript returns as history on
+  the next turn, and the model starts imitating it. The `SPONSORED CONTENT` block in
+  `system_prompt_base.txt` is the other half of this: the model is told never to name a private
+  firm itself, so the reader can always tell advice from paid placement.
+- **Never able to break an answer.** A failing advertiser lookup logs and serves no ad.
+
+`OUT_OF_SCOPE` returns before this step, so a refusal carries no ad. Only `status == "approved"`
+advertisers are eligible; topic matching is case-insensitive on the comma-separated `topics`
+column.
+
+---
+
 ## Labels
 
-`VISA` · `TRANSPORT` · `REAL_ESTATE` · `GENERAL` · `OUT_OF_SCOPE`
+`VISA` · `TRANSPORT` · `REAL_ESTATE` · `LAW` · `GENERAL` · `OUT_OF_SCOPE`
 
-The router may return two of the first three, comma-separated, primary first
+The router may return two of the first four, comma-separated, primary first
 (`VISA,REAL_ESTATE`) — both prompts are then stacked and both folders searched.
+
+`LAW` is the **residual** legal topic: it takes a question only when none of the other three
+fits. Almost every question here has a legal side, so "it's about the law" is not a reason to
+route `LAW`. It is usually the *second* label — `REAL_ESTATE,LAW` for a deposit dispute,
+`TRANSPORT,LAW` for appealing a fine — and the first only for employment, contracts, courts,
+certification, family matters and police.
 
 - `GENERAL` — in scope but not one of the three; base prompt alone, searches `general/` only.
 - `OUT_OF_SCOPE` — the canned refusal. This is where the old `SCOPE RULE` lives now.
@@ -97,10 +131,10 @@ The router may return two of the first three, comma-separated, primary first
 | Compaction cuts to | 3000 tokens **or** 20 messages | [compaction.py:38-40](compaction.py#L38-L40) |
 | Profile length | under 140 words / 280 tokens | [compaction.py:43](compaction.py#L43), [compaction.py:122](compaction.py#L122) |
 | Assistant row prefix | `[assistant] ` | [server.py:629](server.py#L629) |
-| Ingested formats | `.pdf`, `.txt`, `.md` | [server.py:240](server.py#L240) |
-| Scan cutoff | under 200 chars of text = not indexed | [server.py:243](server.py#L243) |
-| Catalogue filename | `catalog.json` | [server.py:246](server.py#L246) |
-| Download base URL | `PUBLIC_BASE_URL` env, empty = site-relative | [server.py:251](server.py#L251) |
+| Ingested formats | `.pdf`, `.txt`, `.md` | [server.py:250](server.py#L250) |
+| Scan cutoff | under 200 chars of text = not indexed | [server.py:250](server.py#L250) |
+| Catalogue filename | `catalog.json` | [server.py:252](server.py#L252) |
+| Download base URL | `PUBLIC_BASE_URL` env, empty = site-relative | [server.py:254](server.py#L254) |
 
 ---
 
@@ -113,11 +147,18 @@ lives in `system_prompt_base.txt` + `system_prompt_visa.txt`. Safe to delete.
 **Chroma** — one collection, each chunk tagged `{"source": path, "topic": folder}`. The
 **folder name is the topic tag**. `general` is always searched alongside the routed folders.
 
+`TOPIC_EXTRA_FOLDERS` ([server.py:179](server.py#L179)) adds cross-topic folders on top of that.
+`REAL_ESTATE` also searches `law`, because 13 of the 15 statutes in `documents/law/` are property
+law — rent control, transfer and mortgage, VAT, capital gains, agents, planning. Without it a
+plain "can my landlord raise the rent?" routes `REAL_ESTATE` alone and never sees the Rent
+Control Law.
+
 | Label | Folder | Prompt |
 |---|---|---|
 | `VISA` | `documents/visa/` | `system_prompt_visa.txt` |
 | `TRANSPORT` | `documents/transport/` | `system_prompt_transport.txt` |
-| `REAL_ESTATE` | `documents/real_estate/` *(empty)* | `system_prompt_realestate.txt` |
+| `REAL_ESTATE` | `documents/real_estate/` | `system_prompt_realestate.txt` |
+| `LAW` | `documents/law/` | `system_prompt_law.txt` |
 | `GENERAL` | `documents/general/` *(empty)* | base only |
 
 **Postgres** — `users`, `chats`, `messages`, and `chat_state` ([models.py:88](models.py#L88)):
@@ -153,11 +194,11 @@ simply not offered. The `description` is what the model matches on when choosing
 hand over, so it should say what the form is *for*.
 
 `build_manifest()` turns the catalogue into a block appended to the system prompt for the routed
-topic ([server.py:296](server.py#L296)). It is stable per topic, so it sits in the cached prefix —
+topic ([server.py:292](server.py#L292)). It is stable per topic, so it sits in the cached prefix —
 never put it in the per-turn context block.
 
 **Downloads** are served by `GET /documents/<topic>/<filename>`
-([server.py:365](server.py#L365)). Only real topic folders are reachable and `send_from_directory`
+([server.py:354](server.py#L354)). Only real topic folders are reachable and `send_from_directory`
 refuses to escape the folder. Links are site-relative unless `PUBLIC_BASE_URL` is set.
 
 **`website_info.txt`** in `documents/transport/` holds external reference links. It is ingested as
@@ -192,7 +233,7 @@ entries; the `Covers:` line is what makes an entry findable.
    catalogue but invisible to retrieval.
 11. **Greek filenames on disk are decomposed** (`Έ` is `Ε` + combining acute) while catalogue
     entries and URLs are usually precomposed. They compare unequal. Always go through
-    `resolve_filename()` ([server.py:258](server.py#L258)) rather than `os.path.isfile` — this
+    `resolve_filename()` ([server.py:261](server.py#L261)) rather than `os.path.isfile` — this
     already silently hid three visa forms once.
 12. **A file with no text layer must not be indexed.** `chunk_text` on an empty string yields
     nothing and on a one-character string yields a junk chunk that pollutes retrieval. The
@@ -212,8 +253,8 @@ with a title and a description of what it is for. After a *move* or *rename*, de
 **Add a topic** — five edits, all required:
 1. `system_prompt_<name>.txt`
 2. `documents/<folder>/`
-3. `TOPIC_PROMPTS` ([server.py:159](server.py#L159))
-4. `TOPIC_FOLDERS` ([server.py:167](server.py#L167))
+3. `TOPIC_PROMPTS` ([server.py:162](server.py#L162))
+4. `TOPIC_FOLDERS` ([server.py:171](server.py#L171))
 5. the label block **and** the examples in `sys_prompt_orchestrator.txt` — skip this and the
    label is never emitted, so the topic is dead code.
 
@@ -241,7 +282,7 @@ every start, so a pre-topic index self-heals.
   Degrades to a plain block trim — correct behaviour, but it loses context without erroring.
   Watch the log line.
 - **Empty topic folders retrieve nothing.** Handled — the context block is swapped for
-  `NO_CONTEXT_NOTE` ([server.py:179](server.py#L179)) telling the model to answer from general
+  `NO_CONTEXT_NOTE` ([server.py:189](server.py#L189)) telling the model to answer from general
   knowledge and flag what needs confirming. The "never invent a fee or a rate" guardrails in the
   topic prompts are what keeps that honest.
 - **`server.py` calls `split_for_compaction` + `extract_profile` directly**, not the `compact()`
@@ -319,8 +360,18 @@ pattern-matches "student") and the tenancy/permit case (returns one label instea
 - **Profile extraction quality is unvalidated.** Every test stubs it. Whether a 140-word block
   preserves enough that answers don't degrade has never been checked against a real model — this
   is the most likely thing to disappoint.
-- `documents/real_estate/` has no source material; that topic runs on model knowledge plus prompt
-  guardrails, and offers no downloads.
+- `documents/law/` holds 15 CyLaw statutes converted from HTML to Markdown, **2,279 chunks** —
+  about 96% of the whole index. Only `Cap.149 Contract Law` and `118(I)-2002 Income Tax Law`
+  serve `LAW` proper; the other 13 are property law and are reached through
+  `TOPIC_EXTRA_FOLDERS`. The `.html` originals sit beside the `.md` and are **not** ingested.
+- That volume has two costs: first ingestion makes ~2,300 embedding calls (minutes, and it runs
+  on every test too), and with `n_results=5` statute chunks can crowd out the short practical
+  guides in `real_estate`. If student-renting answers start quoting the VAT Law, that is why.
+- Statutes are chunked blindly at 1000 chars, so a chunk can start mid-section. Section-aware
+  chunking would improve legal answers more than any prompt change.
+- `documents/real_estate/` holds informal sources — one buyer's mortgage account and student
+  rental guides, in Russian. The topic prompt tells the model to attribute them as reported
+  experience rather than rule, and the rent figures there are **Limassol only**.
 - Five forms are scans with no text layer, so they are **downloadable but not searchable** -
   nothing in them can be retrieved or quoted: `TOM 101.pdf`, `TOM 153E.pdf`, `TOM7D.pdf`,
   `ΤΟΜ9Γ.pdf` (transport) and `Appointment-arrangiment.pdf` (visa). Their catalogue

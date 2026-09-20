@@ -122,6 +122,30 @@ check("greek filename is url-encoded",
       quote("ΤΟΜ_46ΒEN.pdf") in tm)
 check("general has no manifest", server.TOPIC_MANIFESTS["GENERAL"] == "")
 
+# Invariant: the two topic dicts must agree. A label in TOPIC_PROMPTS but missing
+# from TOPIC_FOLDERS passes the router's filter and then KeyErrors during retrieval.
+check("TOPIC_PROMPTS and TOPIC_FOLDERS have the same labels",
+      set(server.TOPIC_PROMPTS) == set(server.TOPIC_FOLDERS),
+      f"{sorted(set(server.TOPIC_PROMPTS) ^ set(server.TOPIC_FOLDERS))}")
+check("every topic folder exists on disk",
+      all(os.path.isdir(os.path.join(server.DOCUMENTS_PATH, f))
+          for f in server.TOPIC_FOLDERS.values()),
+      str([f for f in server.TOPIC_FOLDERS.values()
+           if not os.path.isdir(os.path.join(server.DOCUMENTS_PATH, f))]))
+check("every non-GENERAL topic has a prompt loaded",
+      all(len(server.TOPIC_PROMPTS[t]) > 200
+          for t in server.TOPIC_PROMPTS if t != "GENERAL"),
+      str([t for t in server.TOPIC_PROMPTS
+           if t != "GENERAL" and len(server.TOPIC_PROMPTS[t]) <= 200]))
+check("every label the router may emit survives its own filter",
+      all(l in server.TOPIC_PROMPTS for l in server.TOPIC_FOLDERS))
+check("cross-topic folders all exist and are real topic folders",
+      all(f in server.TOPIC_FOLDERS.values()
+          for extras in server.TOPIC_EXTRA_FOLDERS.values() for f in extras),
+      str(server.TOPIC_EXTRA_FOLDERS))
+check("cross-topic keys are real labels",
+      all(k in server.TOPIC_FOLDERS for k in server.TOPIC_EXTRA_FOLDERS))
+
 print("\n-- greek filenames resolve across unicode normalisation --")
 check("every catalogued visa file resolves on disk",
       all(server.resolve_filename("visa", k) is not None
@@ -181,6 +205,43 @@ app.post("/ask", json={"user_id": uid, "chat_id": cid,
 visa_system = calls["answer"][-1][0]["content"]
 check("visa turn gets the visa manifest", "MEDU2" in visa_system)
 check("visa turn does NOT get transport forms", "TOM 7D" not in visa_system)
+
+print("\n-- sponsored slot --")
+r = app.post("/ask", json={"user_id": uid, "chat_id": cid,
+                           "question": "What documents does a driving licence need?"})
+body = r.get_json()
+check("response carries an advertisement field", "advertisement" in body, str(body.keys()))
+check("no approved advertiser means no ad", body["advertisement"] is None,
+      str(body["advertisement"]))
+
+# An approved advertiser matching the routed topic must surface; a pending one must not.
+db = server.SessionLocal()
+db.add(server.Advertiser(company="Pending Co", reg_number="1", website="https://p.example",
+                         category="other", contact_name="x", contact_email="x@e.com",
+                         topics="VISA", status="pending"))
+db.add(server.Advertiser(company="Approved Co", reg_number="2", website="https://a.example",
+                         category="law_firm", contact_name="y", contact_email="y@e.com",
+                         topics="VISA", status="approved"))
+db.commit()
+
+ad = server.select_advertisement(db, ["VISA"])
+check("approved advertiser is selected", ad and ad["company"] == "Approved Co", str(ad))
+check("ad is labelled sponsored", ad and ad["label"] == "Sponsored", str(ad))
+check("pending advertiser is never served",
+      all(server.select_advertisement(db, ["VISA"])["company"] != "Pending Co"
+          for _ in range(10)))
+check("topic mismatch serves nothing",
+      server.select_advertisement(db, ["TRANSPORT"]) is None,
+      str(server.select_advertisement(db, ["TRANSPORT"])))
+check("no topics serves nothing", server.select_advertisement(db, []) is None)
+db.close()
+
+print("\n-- the ad must not enter the transcript --")
+rows = app.get(f"/messages/{cid}").get_json()
+check("no stored message contains the ad label",
+      not any(server.AD_LABEL in m["message"] for m in rows))
+check("no stored message names an advertiser",
+      not any("Approved Co" in m["message"] for m in rows))
 
 print("\n" + ("ALL PASSED" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

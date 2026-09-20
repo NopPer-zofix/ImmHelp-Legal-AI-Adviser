@@ -92,9 +92,24 @@ Code: `models.py` (database), `auth.py` (tokens, `login_required`, `admin_requir
 documents. See `PROMPT_ROUTING.md` for the design and `documents/README.md` for where to put new
 source files.
 
-The response now carries the routed labels so you can see what the router picked:
+The response now carries the routed labels so you can see what the router picked, plus the
+sponsored slot for that turn:
 
-`{"answer": "...", "topics": ["VISA"]}`
+`{"answer": "...", "topics": ["VISA"], "advertisement": {...} | null}`
+
+## Sponsored slot
+
+Every answer comes back with an `advertisement` field. It is chosen by the server, never written
+by the model: one approved advertiser (`/admin/advertisers`) whose topics overlap the routed
+topics, picked at random, or `null` when none matches. Refusals carry no ad.
+
+```json
+{"label": "Sponsored", "id": 7, "company": "...", "website": "...", "category": "law_firm"}
+```
+
+The frontend renders it under the answer and must keep the `label` visible — it is what separates
+paid placement from the advice above it. The ad is deliberately not saved into the transcript, so
+it never comes back as history and the model never learns to imitate it.
 
 ## Tests
 
