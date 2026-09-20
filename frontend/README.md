@@ -111,7 +111,7 @@ The accepted version is sent to `POST /users` as `consent`; the server stores it
 
 ## Paid access (mock-up)
 
-Free users get `FREE_DAILY_LIMIT` answered questions per day (10 by default). A question counts only
+Free users get `FREE_DAILY_LIMIT` answered questions per day (5 by default). A question counts only
 after the backend answers it, so failed requests are free. At 3 remaining the composer shows a warning;
 at 0 it is replaced by an upgrade prompt.
 

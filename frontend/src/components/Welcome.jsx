@@ -1,4 +1,4 @@
-import { BriefcaseBusiness, Car, GraduationCap, House } from 'lucide-react';
+import { BriefcaseBusiness, Car, GraduationCap, House, Scale } from 'lucide-react';
 import Composer from './Composer';
 import ComposerGate from './ComposerGate';
 
@@ -11,6 +11,7 @@ const SUGGESTIONS = [
   },
   { icon: Car, label: 'Driving licence', prompt: 'Can I drive in Cyprus with a driving licence from my home country?' },
   { icon: House, label: 'Renting a flat', prompt: 'What should I check before signing a rental contract in Cyprus?' },
+  { icon: Scale, label: 'Law', prompt: 'What are my legal rights and obligations as a foreign resident in Cyprus?' },
 ];
 
 function greeting() {
