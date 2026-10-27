@@ -1,0 +1,27 @@
+# Secrets: real environment files stay on your machine. Templates are tracked.
+.env
+.env.*
+!.env.example
+!.env.mock
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.claude/
+
+# Backend
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.venv/
+backend/venv/
+backend/chroma_db/
+backend/*.db
+backend/*.sqlite3
+
+# Editors and OS
+.vscode/
+.idea/
+*.log
+.DS_Store
+Thumbs.db
