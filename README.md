@@ -173,4 +173,6 @@ and the end-to-end tests run on a throwaway SQLite database.
 
 ## License
 
-Not specified yet.
+The source code is released under the [MIT License](LICENSE).
+
+The documents in `backend/documents/` are third-party reference material and are **not** covered by the MIT License. Check their sources before reusing them.
