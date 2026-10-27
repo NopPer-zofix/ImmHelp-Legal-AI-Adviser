@@ -8,6 +8,40 @@ downloaded.
 > ImmHelp is an information service, not legal advice. Check important decisions with a qualified
 > lawyer or the relevant authority.
 
+## Screenshots
+
+Captured from the frontend in mock mode (`npm run dev:mock`), so the answers and numbers are sample data.
+
+**Chat.** Answers are labelled with the topic they are based on. Paid placements appear in a separate
+"Sponsored" slot under the answer.
+
+![Chat with a sponsored slot](docs/screenshots/chat-light.png)
+
+![Chat in dark mode](docs/screenshots/chat-dark.png)
+
+**Admin dashboard.** Totals and the most asked questions.
+
+![Admin dashboard](docs/screenshots/admin-dashboard-light.png)
+
+**Analytics.** Live sessions, users per day, and questions per topic.
+
+![Admin analytics](docs/screenshots/admin-analytics.png)
+
+**Advertiser review.** Admins check and approve advertisers before any ad runs.
+
+![Advertiser review](docs/screenshots/admin-advertisers.png)
+
+<details>
+<summary>More screenshots</summary>
+
+![Login](docs/screenshots/login.png)
+
+![Welcome screen](docs/screenshots/welcome.png)
+
+![Admin dashboard in dark mode](docs/screenshots/admin-dashboard-dark.png)
+
+</details>
+
 ## Features
 
 - **Topic routing**: each question is classified (visas, transport, real estate, law, general) and
