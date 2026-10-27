@@ -104,6 +104,26 @@ npm run dev:mock
 This uses an in-memory fake API. Demo logins: `demo@immhelp.cy` / `demo1234` (user) and
 `admin@immhelp.cy` / `admin1234` (admin).
 
+## Database
+
+PostgreSQL stores users, chats, messages, activity, and advertisers. The table structure is in
+[`backend/db/schema.sql`](backend/db/schema.sql). It contains structure only (no rows).
+
+To create the empty database yourself:
+
+```bash
+createdb immhelp
+psql -d immhelp -f backend/db/schema.sql
+```
+
+You don't need to run this: the backend creates missing tables and columns when it starts.
+To regenerate the schema after changing `backend/models.py`:
+
+```bash
+cd backend
+python db/export_schema.py > db/schema.sql
+```
+
 ## Environment variables
 
 Real `.env` files are never committed. Copy the `.env.example` file in each part and fill it in.
