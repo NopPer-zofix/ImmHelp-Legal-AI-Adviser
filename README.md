@@ -2,22 +2,18 @@
 
 ImmHelp is an AI assistant that answers immigration and relocation questions for Cyprus: visas,
 real estate, transport, and legal procedures. Each question is routed to the right topic, answers
-are grounded in the official documents stored with the backend, and the source documents are
-returned with each answer.
+are grounded in the official documents stored with the backend, and the source documents can be
+downloaded.
 
 > ImmHelp is an information service, not legal advice. Check important decisions with a qualified
 > lawyer or the relevant authority.
-
-## Screenshots
-
-_Screenshots coming soon._
 
 ## Features
 
 - **Topic routing**: each question is classified (visas, transport, real estate, law, general) and
   searched only in that topic's documents.
-- **Grounded answers**: answers are generated from indexed official documents, with document
-  download links.
+- **Grounded answers**: answers are generated from indexed official documents, and the original
+  files can be offered as download links.
 - **Chat history**: conversations are saved per user, can be renamed or deleted, and are compacted
   to keep long chats affordable.
 - **Accounts and roles**: registration with consent, login with tokens, and user and admin roles.
@@ -107,7 +103,9 @@ This uses an in-memory fake API. Demo logins: `demo@immhelp.cy` / `demo1234` (us
 ## Database
 
 PostgreSQL stores users, chats, messages, activity, and advertisers. The table structure is in
-[`backend/db/schema.sql`](backend/db/schema.sql), generated from the models. [`backend/db/schema_from_postgres.sql`](backend/db/schema_from_postgres.sql) is an export from a running database and matches it. Both contain structure only (no rows).
+[`backend/db/schema.sql`](backend/db/schema.sql), generated from the models.
+[`backend/db/schema_from_postgres.sql`](backend/db/schema_from_postgres.sql) is an export from a running
+database and matches it. Both contain structure only (no rows).
 
 To create the empty database yourself:
 
@@ -150,7 +148,8 @@ Real `.env` files are never committed. Copy the `.env.example` file in each part
 
 - Build the frontend with `npm run build` and serve `frontend/dist/` from the same origin as the
   API, or set `VITE_API_URL` to the API's full URL and enable CORS on the backend.
-- Each part has a `Dockerfile`, and `docker compose` is used for local stacks.
+- Each part has a `Dockerfile`. The backend image runs gunicorn on port 5000, and the frontend image
+  serves the built app with nginx on port 80. There is no Compose file in this repository.
 
 ## Tests
 
@@ -175,4 +174,5 @@ and the end-to-end tests run on a throwaway SQLite database.
 
 The source code is released under the [MIT License](LICENSE).
 
-The documents in `backend/documents/` are third-party reference material and are **not** covered by the MIT License. Check their sources before reusing them.
+The documents in `backend/documents/` are third-party reference material and are **not** covered by
+the MIT License. Check their sources before reusing them.
