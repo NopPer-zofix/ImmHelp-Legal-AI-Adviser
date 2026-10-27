@@ -107,7 +107,7 @@ This uses an in-memory fake API. Demo logins: `demo@immhelp.cy` / `demo1234` (us
 ## Database
 
 PostgreSQL stores users, chats, messages, activity, and advertisers. The table structure is in
-[`backend/db/schema.sql`](backend/db/schema.sql). It contains structure only (no rows).
+[`backend/db/schema.sql`](backend/db/schema.sql), generated from the models. [`backend/db/schema_from_postgres.sql`](backend/db/schema_from_postgres.sql) is an export from a running database and matches it. Both contain structure only (no rows).
 
 To create the empty database yourself:
 
