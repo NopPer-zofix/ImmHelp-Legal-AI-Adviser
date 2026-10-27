@@ -113,10 +113,9 @@ it never comes back as history and the model never learns to imitate it.
 
 ## Tests
 
-    python tests/test_routing.py      # routing, prompt loading, retrieval filtering
     python tests/test_chat_flow.py    # end-to-end /ask, history and compaction
     python tests/test_admin_api.py    # tokens, chat ownership, admin routes, bans, advertisers
-    python tests/bench_compaction.py  # token-cost comparison
+    python tests/test_documents.py    # document catalogue, ingestion, downloads, sponsored slot
 
 No API key or Postgres needed — OpenAI is stubbed, Chroma uses a temp path and the
 end-to-end test runs on a throwaway SQLite database.

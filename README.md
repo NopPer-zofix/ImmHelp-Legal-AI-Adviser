@@ -189,10 +189,9 @@ Real `.env` files are never committed. Copy the `.env.example` file in each part
 
 ```bash
 cd backend
-python tests/test_routing.py
 python tests/test_chat_flow.py
 python tests/test_admin_api.py
-python tests/test_documents.py
+python tests/test_documents.py   # indexes the sample documents, takes 1-2 minutes
 ```
 
 The tests do not need an OpenAI key or PostgreSQL: OpenAI is stubbed, Chroma uses a temporary path,
