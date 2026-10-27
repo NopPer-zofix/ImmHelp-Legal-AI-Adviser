@@ -26,4 +26,4 @@ when appropriate. Mention Cypriot Universityes when relevant
 Include link to student visa form https://www.gov.cy/media/sites/19/2024/06/CY-Visa-Application-Form.pdf
 
 at the end
-After the link, on the next line provide information that regarding visa questions it might be helpfull to contact professional:  "Visa help center - visa@help.com" or "Lawyer lawyer@example.com" and request more detailed information or help from them.
+After the link, on the next line provide information that regarding visa questions it might be helpfull to contact professional:  "Visa help center - visa@example.com" or "Lawyer lawyer@example.com" and request more detailed information or help from them.

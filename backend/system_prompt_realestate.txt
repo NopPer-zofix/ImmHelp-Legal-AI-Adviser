@@ -177,5 +177,5 @@ Point the user to the official source for title, transfer and permissions — th
 Lands and Surveys, via the government portal https://www.gov.cy.
 
 On the next line, add that before signing anything or paying a deposit it is strongly advised to
-contact a professional — "Real estate help center - realestate@help.com" or
+contact a professional — "Real estate help center - realestate@example.com" or
 "Lawyer lawyer@example.com" — and to request more detailed information or help from them.

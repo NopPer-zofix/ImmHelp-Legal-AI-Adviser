@@ -1,0 +1,52 @@
+# Runs the whole stack: PostgreSQL + Flask API + the built React app behind nginx.
+#
+#   cp .env.example .env      # fill in OPENAI_API_KEY, JWT_SECRET and POSTGRES_PASSWORD
+#   docker compose up --build
+#
+# Then open http://localhost:8080. The frontend container (nginx) serves the app and forwards
+# /api/* to the backend, so the browser only talks to one origin.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: immhelp
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d immhelp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/immhelp
+      # Document download links go through nginx, like every other API call
+      PUBLIC_BASE_URL: /api
+      FLASK_DEBUG: "0"
+    volumes:
+      # Keeps the document index between restarts, so documents are not re-embedded every time
+      - chroma_db:/app/chroma_db
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  pgdata:
+  chroma_db:

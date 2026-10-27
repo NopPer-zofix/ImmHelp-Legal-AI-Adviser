@@ -92,5 +92,5 @@ Transport Department, via the government portal https://www.gov.cy — and to th
 bus operator for fares and timetables.
 
 On the next line, add that for licence, import or accident questions it may be helpful to contact
-a professional — "Transport help center - transport@help.com" or "Lawyer lawyer@example.com" —
+a professional — "Transport help center - transport@example.com" or "Lawyer lawyer@example.com" —
 and to request more detailed information or help from them.

@@ -87,6 +87,25 @@ backend/    Flask API, documents, tests   → see backend/README.md
 
 ## Getting started
 
+### Quick start with Docker
+
+The fastest way to run everything (database, API and web app):
+
+```bash
+cp .env.example .env          # Windows PowerShell: copy .env.example .env
+# Edit .env: set OPENAI_API_KEY, JWT_SECRET and POSTGRES_PASSWORD
+docker compose up --build
+```
+
+Open http://localhost:8080. The first start takes a while because the backend indexes the
+documents. Then register in the app and make yourself an admin:
+
+```bash
+docker compose exec backend python make_admin.py you@example.com
+```
+
+To run the parts separately for development, follow the steps below.
+
 ### Prerequisites
 
 - Node.js 20 or newer (frontend)
@@ -158,9 +177,17 @@ python db/export_schema.py > db/schema.sql
 
 ## Environment variables
 
-Real `.env` files are never committed. Copy the `.env.example` file in each part and fill it in.
+Real `.env` files are never committed. Copy the `.env.example` file you need and fill it in.
 
-**Backend (`backend/.env`)**
+**Docker Compose (`.env` in the repository root)**
+
+| Variable | Purpose |
+|---|---|
+| `OPENAI_API_KEY` | OpenAI key used for answers, routing and embeddings |
+| `JWT_SECRET` | Signs login tokens |
+| `POSTGRES_PASSWORD` | Password for the PostgreSQL container |
+
+**Backend (`backend/.env`)**, for running it without Docker
 
 | Variable | Purpose |
 |---|---|
@@ -182,8 +209,9 @@ Real `.env` files are never committed. Copy the `.env.example` file in each part
 
 - Build the frontend with `npm run build` and serve `frontend/dist/` from the same origin as the
   API, or set `VITE_API_URL` to the API's full URL and enable CORS on the backend.
-- Each part has a `Dockerfile`. The backend image runs gunicorn on port 5000, and the frontend image
-  serves the built app with nginx on port 80. There is no Compose file in this repository.
+- `docker-compose.yml` starts PostgreSQL, the backend (gunicorn on port 5000) and the frontend (nginx on
+  port 80, published on 8080) together. nginx forwards `/api/*` to the backend, so no CORS setup is needed.
+  Each part also has its own `Dockerfile`.
 
 ## Tests
 

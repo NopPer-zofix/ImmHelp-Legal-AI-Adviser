@@ -92,5 +92,5 @@ Association for verifying an advocate, and the government portal https://www.gov
 and ministry information.
 
 On the next line, add that a legal matter with a deadline or money at stake should be taken to a
-professional — "Legal help center - legal@help.com" or "Lawyer lawyer@example.com" — and that
+professional — "Legal help center - legal@example.com" or "Lawyer lawyer@example.com" — and that
 they should do so early rather than after a deadline has passed.

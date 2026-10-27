@@ -82,5 +82,5 @@ When it does apply, end the answer with the student visa application form link:
 https://www.gov.cy/media/sites/19/2024/06/CY-Visa-Application-Form.pdf
 
 On the next line after the link, add that for visa questions it may be helpful to contact a
-professional — "Visa help center - visa@help.com" or "Lawyer lawyer@example.com" — and to request
+professional — "Visa help center - visa@example.com" or "Lawyer lawyer@example.com" — and to request
 more detailed information or help from them.
